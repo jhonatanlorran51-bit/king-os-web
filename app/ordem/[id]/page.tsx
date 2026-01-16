@@ -4,12 +4,20 @@ import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { db } from "../../../lib/firebase";
-import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  collection,
+  serverTimestamp,
+} from "firebase/firestore";
 
 type Ordem = {
   cliente?: string;
   modelo?: string;
-  telefone?: string; // <- opcional (se tiver, manda direto)
+  telefone?: string; // opcional: se tiver, manda direto
   reparos?: string[];
   estado?: string[];
   valorTotal?: number | null;
@@ -72,6 +80,8 @@ export default function OrdemDetalhePage() {
   const [antesLocal, setAntesLocal] = useState<string[]>([]);
   const [depoisLocal, setDepoisLocal] = useState<string[]>([]);
   const [salvandoFotos, setSalvandoFotos] = useState(false);
+
+  const [enviandoWhats, setEnviandoWhats] = useState(false);
 
   async function carregar() {
     setCarregando(true);
@@ -161,21 +171,42 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  // ✅ WHATSAPP: manda link do PDF com mensagem pronta
-  function enviarPdfWhatsApp() {
+  // ✅ WHATSAPP: cria um link público /s/... e envia ao cliente
+  async function enviarPdfWhatsApp() {
     if (!ordem) return;
+    setEnviandoWhats(true);
+    try {
+      // cria copia publica (só dados do cliente)
+      const ref = await addDoc(collection(db, "shares"), {
+        lojaNome: "KING OF CELL",
+        cliente: ordem.cliente || "",
+        modelo: ordem.modelo || "",
+        reparos: ordem.reparos || [],
+        estado: ordem.estado || [],
+        valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
+        status: ordem.status || "",
+        fotosAntes: ordem.fotosAntes || [],
+        fotosDepois: ordem.fotosDepois || [],
+        criadoEm: serverTimestamp(),
+      });
 
-    const pdfUrl = `${window.location.origin}/pdf/${id}`;
-    const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
-    const msg = `Olá${nome}! Segue o PDF do seu orçamento/OS ${osCurta(id)}:\n\n${pdfUrl}`;
+      const linkPublico = `${window.location.origin}/s/${ref.id}`;
 
-    const tel = (ordem.telefone || "").replace(/\D/g, "");
+      const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
+      const msg = `Olá${nome}! Segue o PDF do seu orçamento/OS ${osCurta(id)}:\n\n${linkPublico}`;
 
-    const waUrl = tel
-      ? `https://wa.me/${tel.startsWith("55") ? tel : `55${tel}`}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      const tel = (ordem.telefone || "").replace(/\D/g, "");
+      const waUrl = tel
+        ? `https://wa.me/${tel.startsWith("55") ? tel : `55${tel}`}?text=${encodeURIComponent(msg)}`
+        : `https://wa.me/?text=${encodeURIComponent(msg)}`;
 
-    window.open(waUrl, "_blank", "noopener,noreferrer");
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gerar link público. Confira as Rules do Firestore (coleção shares).");
+    } finally {
+      setEnviandoWhats(false);
+    }
   }
 
   if (carregando) {
@@ -339,13 +370,21 @@ export default function OrdemDetalhePage() {
           </button>
 
           <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
-            PDF
+            PDF (interno)
           </Link>
 
-          <button onClick={enviarPdfWhatsApp} className="bg-green-600 text-black px-4 py-2 rounded font-bold">
-            Enviar PDF no WhatsApp
+          <button
+            onClick={enviarPdfWhatsApp}
+            disabled={enviandoWhats}
+            className="bg-green-600 text-black px-4 py-2 rounded font-bold disabled:opacity-50"
+          >
+            {enviandoWhats ? "Gerando link..." : "Enviar PDF no WhatsApp"}
           </button>
         </div>
+
+        <p className="text-zinc-400 text-sm mt-4">
+          Obs: o link enviado ao cliente é público (sem login) e mostra somente o valor final e as fotos.
+        </p>
       </div>
     </main>
   );
