@@ -13,7 +13,6 @@ function toNum(v: string) {
 export default function NovaVendaPage() {
   const router = useRouter();
 
-  const [cliente, setCliente] = useState("");
   const [marca, setMarca] = useState("");
   const [modelo, setModelo] = useState("");
 
@@ -32,11 +31,10 @@ export default function NovaVendaPage() {
   }, [valorAparelho, valorPecas, valorEstimado]);
 
   async function salvar() {
-    if (!cliente.trim() || !marca.trim() || !modelo.trim()) {
-      alert("Preencha Cliente, Marca e Modelo.");
+    if (!marca.trim() || !modelo.trim()) {
+      alert("Preencha Marca e Modelo.");
       return;
     }
-
     if (calc.a === null || calc.p === null || calc.e === null) {
       alert("Preencha os valores corretamente.");
       return;
@@ -45,15 +43,16 @@ export default function NovaVendaPage() {
     setSalvando(true);
     try {
       const ref = await addDoc(collection(db, "vendas"), {
-        cliente: cliente.trim(),
         marca: marca.trim(),
         modelo: modelo.trim(),
 
-        valorAparelho: calc.a, // custo: aparelho
-        valorPecas: calc.p,    // custo: peças
-        valorEstimado: calc.e, // estimado
+        // custos (investimento)
+        valorAparelho: calc.a, // pagou no aparelho
+        valorPecas: calc.p,    // pagou nas peças
+        valorEstimado: calc.e, // estimado de venda
 
-        valorVendido: null,    // preencher depois
+        // depois você preenche
+        valorVendido: null,
         status: "Em estoque",
 
         criadoEm: serverTimestamp(),
@@ -63,7 +62,7 @@ export default function NovaVendaPage() {
       router.replace(`/vendas/${ref.id}`);
     } catch (e) {
       console.error(e);
-      alert("Erro ao salvar. Veja o console (F12).");
+      alert("Erro ao salvar. Se aparecer permissão, confira as Rules do Firestore.");
     } finally {
       setSalvando(false);
     }
@@ -88,13 +87,6 @@ export default function NovaVendaPage() {
           <h1 className="text-2xl font-extrabold mb-5">Adicionar aparelho</h1>
 
           <div className="grid grid-cols-1 gap-3">
-            <input
-              className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700"
-              placeholder="Nome do cliente"
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-            />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input
                 className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700"
@@ -110,7 +102,7 @@ export default function NovaVendaPage() {
               />
             </div>
 
-            <p className="text-zinc-400 text-sm mt-2">Valor investido</p>
+            <p className="text-zinc-400 text-sm mt-2">Investimento (vai ser descontado do vendido)</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input
