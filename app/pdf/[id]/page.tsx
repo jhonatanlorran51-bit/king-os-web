@@ -102,7 +102,8 @@ export default function PdfPage() {
       {/* DADOS */}
       <div className="space-y-1">
         <p><b>Cliente:</b> {ordem.cliente || "-"}</p>
-        <p><b>Aparelho:</b> {ordem.modelo || "-"}</p>
+       <p><b>Marca:</b> {ordem.marca || "-"}</p>
+       <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
         <p><b>Status:</b> {ordem.status || "-"}</p>
       </div>
 
