@@ -15,21 +15,43 @@ function monthKey(d = new Date()) {
   return `${y}-${m}`;
 }
 
+function inMonth(docData: any, inicio: number, fim: number) {
+  const dt =
+    docData?.criadoEm?.toDate?.() ||
+    docData?.concluidoEm?.toDate?.() ||
+    docData?.vendidoEm?.toDate?.() ||
+    (docData?.criadoEm instanceof Date ? docData.criadoEm : null) ||
+    null;
+
+  const t = dt ? dt.getTime() : null;
+  return typeof t === "number" && t >= inicio && t < fim;
+}
+
 export default function GanhosPage() {
   const router = useRouter();
+
   const [ordens, setOrdens] = useState<any[]>([]);
+  const [vendas, setVendas] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
   const [mes, setMes] = useState(monthKey());
 
   useEffect(() => {
     setCarregando(true);
-    const unsub = onSnapshot(collection(db, "ordens"), (snap) => {
-      const lista = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      setOrdens(lista);
+
+    const unsubOrdens = onSnapshot(collection(db, "ordens"), (snap) => {
+      setOrdens(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    });
+
+    const unsubVendas = onSnapshot(collection(db, "vendas"), (snap) => {
+      setVendas(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
       setCarregando(false);
     });
-    return () => unsub();
+
+    return () => {
+      unsubOrdens();
+      unsubVendas();
+    };
   }, []);
 
   const resumo = useMemo(() => {
@@ -37,30 +59,64 @@ export default function GanhosPage() {
     const inicio = new Date(yy, mm - 1, 1).getTime();
     const fim = new Date(yy, mm, 1).getTime();
 
-    const doMes = ordens.filter((o) => {
-      const dt = o?.criadoEm?.toDate ? o.criadoEm.toDate() : o?.criadoEm instanceof Date ? o.criadoEm : null;
-      const t = dt ? dt.getTime() : null;
-      return typeof t === "number" && t >= inicio && t < fim;
-    });
+    // OS concluídas
+    const ordensMes = ordens.filter((o) => inMonth(o, inicio, fim));
+    const concluidas = ordensMes.filter((o) => o.status === "Concluído");
 
-    const concluidas = doMes.filter((o) => o.status === "Concluído");
+    const faturamentoOS = concluidas.reduce(
+      (acc, o) => acc + (typeof o.valorTotal === "number" ? o.valorTotal : 0),
+      0
+    );
+    const custosOS = concluidas.reduce(
+      (acc, o) => acc + (typeof o.valorPeca === "number" ? o.valorPeca : 0),
+      0
+    );
+    const lucroOS = concluidas.reduce(
+      (acc, o) => acc + (typeof o.lucro === "number" ? o.lucro : 0),
+      0
+    );
 
-    const faturamento = concluidas.reduce((acc, o) => acc + (typeof o.valorTotal === "number" ? o.valorTotal : 0), 0);
-    const custos = concluidas.reduce((acc, o) => acc + (typeof o.valorPeca === "number" ? o.valorPeca : 0), 0);
-    const lucro = concluidas.reduce((acc, o) => acc + (typeof o.lucro === "number" ? o.lucro : 0), 0);
+    // Vendas vendidas
+    const vendasMes = vendas.filter((v) => inMonth(v, inicio, fim));
+    const vendidas = vendasMes.filter((v) => v.status === "Vendido");
+
+    const faturamentoVendas = vendidas.reduce(
+      (acc, v) => acc + (typeof v.valorVendido === "number" ? v.valorVendido : 0),
+      0
+    );
+
+    const custosVendas = vendidas.reduce((acc, v) => {
+      const a = typeof v.valorAparelho === "number" ? v.valorAparelho : 0;
+      const p = typeof v.valorPecas === "number" ? v.valorPecas : 0;
+      return acc + a + p;
+    }, 0);
+
+    const lucroVendas = vendidas.reduce(
+      (acc, v) => acc + (typeof v.lucro === "number" ? v.lucro : 0),
+      0
+    );
 
     return {
-      totalConcluidas: concluidas.length,
-      faturamento,
-      custos,
-      lucro,
-      concluidas,
+      totalOS: concluidas.length,
+      totalVendas: vendidas.length,
+
+      faturamento: faturamentoOS + faturamentoVendas,
+      custos: custosOS + custosVendas,
+      lucro: lucroOS + lucroVendas,
+
+      detalhes: {
+        faturamentoOS,
+        faturamentoVendas,
+        custosOS,
+        custosVendas,
+        lucroOS,
+        lucroVendas,
+      },
     };
-  }, [ordens, mes]);
+  }, [ordens, vendas, mes]);
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* topo: só voltar */}
       <header className="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
@@ -78,7 +134,7 @@ export default function GanhosPage() {
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <p className="text-xl font-extrabold">Resumo do mês</p>
-              <p className="text-zinc-400 text-sm">Concluídas contam no cálculo</p>
+              <p className="text-zinc-400 text-sm">OS concluídas + Vendas vendidas</p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -95,28 +151,34 @@ export default function GanhosPage() {
           {carregando ? (
             <p className="text-zinc-400 mt-4">Carregando...</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                <p className="text-zinc-400 text-sm">Faturamento (mês)</p>
-                <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.faturamento)}</p>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-400 text-sm">Faturamento (mês)</p>
+                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.faturamento)}</p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-400 text-sm">Custos (mês)</p>
+                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.custos)}</p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-400 text-sm">Lucro (mês)</p>
+                  <p className="text-2xl font-extrabold mt-1 text-green-400">{formatBRL(resumo.lucro)}</p>
+                </div>
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                <p className="text-zinc-400 text-sm">Custos (peças)</p>
-                <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.custos)}</p>
+              <div className="mt-4 text-xs text-zinc-500 space-y-1">
+                <p>OS concluídas: <b>{resumo.totalOS}</b> | Vendas vendidas: <b>{resumo.totalVendas}</b></p>
+                <p>
+                  Detalhe: Faturamento OS {formatBRL(resumo.detalhes.faturamentoOS)} + Vendas {formatBRL(resumo.detalhes.faturamentoVendas)}
+                </p>
+                <p>
+                  Detalhe: Custos OS {formatBRL(resumo.detalhes.custosOS)} + Vendas {formatBRL(resumo.detalhes.custosVendas)}
+                </p>
               </div>
-
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                <p className="text-zinc-400 text-sm">Lucro (mês)</p>
-                <p className="text-2xl font-extrabold mt-1 text-green-400">{formatBRL(resumo.lucro)}</p>
-              </div>
-            </div>
-          )}
-
-          {!carregando && (
-            <p className="text-zinc-500 text-xs mt-4">
-              OS concluídas no mês: <b>{resumo.totalConcluidas}</b>
-            </p>
+            </>
           )}
         </div>
       </div>
