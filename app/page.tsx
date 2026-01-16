@@ -49,6 +49,13 @@ export default function HomePage() {
             </Link>
 
             <Link
+              href="/concluidas"
+              className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold"
+            >
+              Concluídas
+            </Link>
+
+            <Link
               href="/historico"
               className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold"
             >
@@ -64,7 +71,7 @@ export default function HomePage() {
           </div>
 
           <p className="text-zinc-500 text-xs mt-5">
-            Obs: “Sair” só aparece aqui na Home (como você pediu).
+            “Sair” aparece só aqui na Home.
           </p>
         </div>
       </div>
