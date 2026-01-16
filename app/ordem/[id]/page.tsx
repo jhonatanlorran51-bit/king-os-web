@@ -46,11 +46,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-async function compressImage(
-  file: File,
-  maxW = 900,
-  quality = 0.75
-): Promise<string> {
+async function compressImage(file: File, maxW = 900, quality = 0.75): Promise<string> {
   const base64 = await fileToBase64(file);
   const img = document.createElement("img");
   img.src = base64;
@@ -75,7 +71,6 @@ async function compressImage(
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-/* ================== COMPONENTE ================== */
 export default function OrdemDetalhePage() {
   const router = useRouter();
   const params = useParams();
@@ -101,28 +96,19 @@ export default function OrdemDetalhePage() {
   }, [id]);
 
   async function iniciarReparo() {
-    await updateDoc(doc(db, "ordens", id), {
-      status: "Em reparo",
-      iniciadoEm: new Date(),
-    });
+    await updateDoc(doc(db, "ordens", id), { status: "Em reparo", iniciadoEm: new Date() });
     await carregar();
     alert("Status atualizado para Em reparo!");
   }
 
   async function concluir() {
-    await updateDoc(doc(db, "ordens", id), {
-      status: "Concluído",
-      concluidoEm: new Date(),
-    });
+    await updateDoc(doc(db, "ordens", id), { status: "Concluído", concluidoEm: new Date() });
     await carregar();
-    alert("Ordem concluída!");
+    alert("Ordem concluída! Agora liberei as fotos (Depois).");
   }
 
   async function cancelar() {
-    await updateDoc(doc(db, "ordens", id), {
-      status: "Cancelado",
-      canceladoEm: new Date(),
-    });
+    await updateDoc(doc(db, "ordens", id), { status: "Cancelado", canceladoEm: new Date() });
     await carregar();
     alert("Ordem cancelada!");
   }
@@ -137,146 +123,196 @@ export default function OrdemDetalhePage() {
 
   async function addAntes(files: FileList | null) {
     if (!files || !ordem) return;
-    const livres = Math.max(
-      0,
-      3 - (ordem.fotosAntes?.length || 0) - antesLocal.length
-    );
+    const atuais = (ordem.fotosAntes || []).length + antesLocal.length;
+    const livres = Math.max(0, 3 - atuais);
     if (livres <= 0) return alert("Limite de 3 fotos (Antes).");
 
     const novas: string[] = [];
     for (const f of Array.from(files).slice(0, livres)) {
-      novas.push(await compressImage(f));
+      novas.push(await compressImage(f, 900, 0.75));
     }
     setAntesLocal((p) => [...p, ...novas]);
   }
 
   async function addDepois(files: FileList | null) {
     if (!files || !ordem) return;
-    const livres = Math.max(
-      0,
-      3 - (ordem.fotosDepois?.length || 0) - depoisLocal.length
-    );
+    const atuais = (ordem.fotosDepois || []).length + depoisLocal.length;
+    const livres = Math.max(0, 3 - atuais);
     if (livres <= 0) return alert("Limite de 3 fotos (Depois).");
 
     const novas: string[] = [];
     for (const f of Array.from(files).slice(0, livres)) {
-      novas.push(await compressImage(f));
+      novas.push(await compressImage(f, 900, 0.75));
     }
     setDepoisLocal((p) => [...p, ...novas]);
+  }
+
+  function removerAntesLocal(idx: number) {
+    setAntesLocal((p) => p.filter((_, i) => i !== idx));
+  }
+
+  function removerDepoisLocal(idx: number) {
+    setDepoisLocal((p) => p.filter((_, i) => i !== idx));
   }
 
   async function salvarFotos() {
     if (!ordem) return;
     setSalvandoFotos(true);
-    await updateDoc(doc(db, "ordens", id), {
-      fotosAntes: [...(ordem.fotosAntes || []), ...antesLocal].slice(0, 3),
-      fotosDepois: [...(ordem.fotosDepois || []), ...depoisLocal].slice(0, 3),
-    });
-    setAntesLocal([]);
-    setDepoisLocal([]);
-    await carregar();
-    setSalvandoFotos(false);
-    alert("Fotos salvas!");
+    try {
+      await updateDoc(doc(db, "ordens", id), {
+        fotosAntes: [...(ordem.fotosAntes || []), ...antesLocal].slice(0, 3),
+        fotosDepois: [...(ordem.fotosDepois || []), ...depoisLocal].slice(0, 3),
+      });
+
+      setAntesLocal([]);
+      setDepoisLocal([]);
+      await carregar();
+      alert("Fotos salvas com sucesso!");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar fotos. Veja o console (F12).");
+    } finally {
+      setSalvandoFotos(false);
+    }
   }
 
   async function enviarPdfWhatsApp() {
     if (!ordem) return;
     setEnviandoWhats(true);
 
-    const ref = await addDoc(collection(db, "shares"), {
-      cliente: ordem.cliente || "",
-      marca: ordem.marca || "",
-      modelo: ordem.modelo || "",
-      reparos: ordem.reparos || [],
-      estado: ordem.estado || [],
-      valorTotal: ordem.valorTotal || null,
-      fotosAntes: ordem.fotosAntes || [],
-      fotosDepois: ordem.fotosDepois || [],
-      criadoEm: serverTimestamp(),
-    });
+    try {
+      const ref = await addDoc(collection(db, "shares"), {
+        cliente: ordem.cliente || "",
+        marca: ordem.marca || "",
+        modelo: ordem.modelo || "",
+        reparos: ordem.reparos || [],
+        estado: ordem.estado || [],
+        valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
+        fotosAntes: ordem.fotosAntes || [],
+        fotosDepois: ordem.fotosDepois || [],
+        criadoEm: serverTimestamp(),
+      });
 
-    const link = `${window.location.origin}/s/${ref.id}`;
-    const msg = `Olá ${
-      ordem.cliente || ""
-    }! Segue o PDF da sua OS ${osCurta(id)}:\n\n${link}`;
+      const link = `${window.location.origin}/s/${ref.id}`;
+      const msg = `Olá ${ordem.cliente || ""}! Segue o PDF da sua OS ${osCurta(id)}:\n\n${link}`;
 
-    window.open(
-      `https://wa.me/?text=${encodeURIComponent(msg)}`,
-      "_blank"
-    );
-    setEnviandoWhats(false);
+      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    } finally {
+      setEnviandoWhats(false);
+    }
   }
 
-  if (carregando)
+  if (carregando) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
-        Carregando...
+        <p className="text-zinc-400">Carregando...</p>
       </main>
     );
+  }
 
-  if (!ordem)
+  if (!ordem) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
-        Ordem não encontrada.
+        <p className="text-red-400">Ordem não encontrada.</p>
       </main>
     );
+  }
+
+  const concluida = (ordem.status || "") === "Concluído";
+  const fotosAntes = ordem.fotosAntes || [];
+  const fotosDepois = ordem.fotosDepois || [];
 
   return (
     <main className="min-h-screen bg-black text-white p-6">
+      {/* MENU */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => router.back()}
-          className="bg-zinc-700 px-4 py-2 rounded font-bold"
-        >
-          Voltar
-        </button>
-        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Home
-        </Link>
-        <Link
-          href="/dashboard"
-          className="bg-zinc-700 px-4 py-2 rounded font-bold"
-        >
-          Ativas
-        </Link>
-        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">
-          Sair
-        </Link>
+        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">Voltar</button>
+        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">Home</Link>
+        <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">Ativas</Link>
+        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">Sair</Link>
       </div>
 
       <h1 className="text-2xl font-bold mb-2">Detalhes da OS</h1>
-      <p className="text-zinc-400 mb-4">{osCurta(id)}</p>
+      <p className="text-zinc-300 mb-4"><b>{osCurta(id)}</b></p>
 
       <div className="bg-zinc-900 p-4 rounded">
-        <p><b>Cliente:</b> {ordem.cliente}</p>
+        <p><b>Cliente:</b> {ordem.cliente || "-"}</p>
         <p><b>Marca:</b> {ordem.marca || "-"}</p>
-        <p><b>Modelo:</b> {ordem.modelo}</p>
-        <p><b>Status:</b> {ordem.status}</p>
-        <p>
-          <b>Valor:</b>{" "}
-          {typeof ordem.valorTotal === "number"
-            ? formatBRL(ordem.valorTotal)
-            : "-"}
-        </p>
+        <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
+        <p><b>Status:</b> {ordem.status || "Em análise"}</p>
+        <p><b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}</p>
 
+        {/* FOTOS ANTES */}
+        <div className="mt-6">
+          <p className="font-bold mb-2">Fotos (Antes) — como chegou (até 3)</p>
+
+          <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
+            Selecionar fotos (Antes)
+            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addAntes(e.target.files)} />
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+            {fotosAntes.map((src, i) => (
+              <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded border border-zinc-700" />
+            ))}
+            {antesLocal.map((src, i) => (
+              <div key={i} className="relative">
+                <img src={src} alt={`Antes novo ${i + 1}`} className="rounded border border-zinc-700" />
+                <button onClick={() => removerAntesLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FOTOS DEPOIS */}
+        <div className="mt-6">
+          <p className="font-bold mb-2">Fotos (Depois) — entrega (até 3)</p>
+
+          {!concluida ? (
+            <p className="text-zinc-300">Conclua a ordem para liberar as fotos (Depois).</p>
+          ) : (
+            <>
+              <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
+                Selecionar fotos (Depois)
+                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addDepois(e.target.files)} />
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                {fotosDepois.map((src, i) => (
+                  <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded border border-zinc-700" />
+                ))}
+                {depoisLocal.map((src, i) => (
+                  <div key={i} className="relative">
+                    <img src={src} alt={`Depois novo ${i + 1}`} className="rounded border border-zinc-700" />
+                    <button onClick={() => removerDepoisLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <button
+          onClick={salvarFotos}
+          disabled={salvandoFotos}
+          className="mt-6 bg-yellow-500 text-black px-6 py-2 rounded font-bold disabled:opacity-50"
+        >
+          {salvandoFotos ? "Salvando..." : "Salvar Fotos"}
+        </button>
+
+        {/* AÇÕES */}
         <div className="flex gap-2 mt-6 flex-wrap">
-          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">
-            Iniciar Reparo
-          </button>
-          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">
-            Concluir
-          </button>
-          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">
-            Cancelar
-          </button>
-          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">
-            Excluir
-          </button>
+          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">Iniciar Reparo</button>
+          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">Concluir</button>
+          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">Cancelar</button>
+          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">Excluir</button>
+
           <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
-            PDF
+            PDF (interno)
           </Link>
-          <button onClick={enviarPdfWhatsApp} className="bg-green-600 text-black px-4 py-2 rounded font-bold">
-            Enviar PDF no WhatsApp
+
+          <button onClick={enviarPdfWhatsApp} disabled={enviandoWhats} className="bg-green-600 text-black px-4 py-2 rounded font-bold disabled:opacity-50">
+            {enviandoWhats ? "Gerando link..." : "Enviar PDF no WhatsApp"}
           </button>
         </div>
       </div>
