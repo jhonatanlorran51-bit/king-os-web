@@ -45,15 +45,17 @@ function toggle(list: string[], item: string, setList: (v: string[]) => void) {
   setList(list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
 }
 
+function soNumerosTelefone(v: string) {
+  return v.replace(/\D/g, "");
+}
+
 /* ================== COMPONENTE ================== */
 export default function OrdensPage() {
   const router = useRouter();
 
   const [cliente, setCliente] = useState("");
-
-  // ✅ NOVO: marca
+  const [telefone, setTelefone] = useState(""); // ✅ NOVO
   const [marca, setMarca] = useState("");
-
   const [modelo, setModelo] = useState("");
 
   // valores
@@ -97,9 +99,7 @@ export default function OrdensPage() {
 
     const toTake = Array.from(files).slice(0, livres);
     const novas: string[] = [];
-    for (const f of toTake) {
-      novas.push(await compressImage(f, 900, 0.75));
-    }
+    for (const f of toTake) novas.push(await compressImage(f, 900, 0.75));
     setFotosAntesLocal((p) => [...p, ...novas]);
   }
 
@@ -109,23 +109,10 @@ export default function OrdensPage() {
 
   /* ======== SALVAR ORDEM ======== */
   async function salvarOrdem() {
-    if (!cliente.trim()) {
-      alert("Preencha o nome do cliente.");
-      return;
-    }
-    if (!marca.trim()) {
-      alert("Preencha a marca do aparelho.");
-      return;
-    }
-    if (!modelo.trim()) {
-      alert("Preencha o modelo do aparelho.");
-      return;
-    }
-
-    if (!valores) {
-      alert("Preencha corretamente os valores da peça e do reparo.");
-      return;
-    }
+    if (!cliente.trim()) return alert("Preencha o nome do cliente.");
+    if (!marca.trim()) return alert("Preencha a marca do aparelho.");
+    if (!modelo.trim()) return alert("Preencha o modelo do aparelho.");
+    if (!valores) return alert("Preencha corretamente os valores da peça e do reparo.");
 
     setSalvando(true);
     try {
@@ -137,11 +124,10 @@ export default function OrdensPage() {
 
       const docRef = await addDoc(collection(db, "ordens"), {
         cliente: cliente.trim(),
-
-        // ✅ NOVO
+        telefone: soNumerosTelefone(telefone), // ✅ NOVO
         marca: marca.trim(),
-
         modelo: modelo.trim(),
+
         reparos: reparosFinal,
         estado: estadoFinal,
 
@@ -181,13 +167,22 @@ export default function OrdensPage() {
 
       <h1 className="text-2xl font-bold mb-6">Nova Ordem de Serviço</h1>
 
-      {/* DADOS */}
-      <input
-        className="w-full mb-3 p-2 rounded bg-zinc-800 border border-zinc-700"
-        placeholder="Nome do cliente"
-        value={cliente}
-        onChange={(e) => setCliente(e.target.value)}
-      />
+      {/* ✅ Cliente + Telefone lado a lado */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <input
+          className="w-full p-2 rounded bg-zinc-800 border border-zinc-700"
+          placeholder="Nome do cliente"
+          value={cliente}
+          onChange={(e) => setCliente(e.target.value)}
+        />
+
+        <input
+          className="w-full p-2 rounded bg-zinc-800 border border-zinc-700"
+          placeholder="Telefone (WhatsApp) ex: 67999999999"
+          value={telefone}
+          onChange={(e) => setTelefone(e.target.value)}
+        />
+      </div>
 
       {/* ✅ Marca + Modelo lado a lado */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -200,7 +195,7 @@ export default function OrdensPage() {
 
         <input
           className="w-full p-2 rounded bg-zinc-800 border border-zinc-700"
-          placeholder="Modelo (ex: A14, iPhone 11, Redmi Note 12...)"
+          placeholder="Modelo (ex: A14, iPhone 11...)"
           value={modelo}
           onChange={(e) => setModelo(e.target.value)}
         />
