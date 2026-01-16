@@ -34,45 +34,36 @@ export default function HomePage() {
           <p className="text-zinc-400 mb-6">Escolha o que você quer fazer</p>
 
           <div className="grid grid-cols-1 gap-3">
-            <Link
-              href="/ordens"
-              className="w-full text-center bg-yellow-500 hover:bg-yellow-400 text-black py-3 rounded-2xl font-extrabold"
-            >
+            <Link href="/ordens" className="w-full text-center bg-yellow-500 hover:bg-yellow-400 text-black py-3 rounded-2xl font-extrabold">
               Nova Ordem
             </Link>
 
-            <Link
-              href="/dashboard"
-              className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold"
-            >
+            <Link href="/dashboard" className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold">
               Ordens Ativas
             </Link>
 
-            <Link
-              href="/concluidas"
-              className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold"
-            >
+            <Link href="/concluidas" className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold">
               Concluídas
             </Link>
 
-            <Link
-              href="/historico"
-              className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold"
-            >
+            <Link href="/ganhos" className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold">
+              Ganhos
+            </Link>
+
+            <Link href="/custos" className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold">
+              Custos
+            </Link>
+
+            <Link href="/historico" className="w-full text-center bg-zinc-800 hover:bg-zinc-700 py-3 rounded-2xl font-bold">
               Histórico
             </Link>
 
-            <Link
-              href="/logout"
-              className="w-full text-center bg-red-500 hover:bg-red-400 text-black py-3 rounded-2xl font-extrabold"
-            >
+            <Link href="/logout" className="w-full text-center bg-red-500 hover:bg-red-400 text-black py-3 rounded-2xl font-extrabold">
               Sair
             </Link>
           </div>
 
-          <p className="text-zinc-500 text-xs mt-5">
-            “Sair” aparece só aqui na Home.
-          </p>
+          <p className="text-zinc-500 text-xs mt-5">“Sair” aparece só aqui na Home.</p>
         </div>
       </div>
     </main>
