@@ -59,7 +59,7 @@ export default function GanhosPage() {
     const inicio = new Date(yy, mm - 1, 1).getTime();
     const fim = new Date(yy, mm, 1).getTime();
 
-    // OS concluídas
+    // ===== OS (somar só Concluído) =====
     const ordensMes = ordens.filter((o) => inMonth(o, inicio, fim));
     const concluidas = ordensMes.filter((o) => o.status === "Concluído");
 
@@ -76,9 +76,9 @@ export default function GanhosPage() {
       0
     );
 
-    // Vendas vendidas
+    // ===== VENDAS (somar só Vendido) =====
     const vendasMes = vendas.filter((v) => inMonth(v, inicio, fim));
-    const vendidas = vendasMes.filter((v) => v.status === "Vendido");
+    const vendidas = vendasMes.filter((v) => v.status === "Vendido"); // ✅ Cancelado NÃO entra
 
     const faturamentoVendas = vendidas.reduce(
       (acc, v) => acc + (typeof v.valorVendido === "number" ? v.valorVendido : 0),
@@ -134,7 +134,9 @@ export default function GanhosPage() {
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <p className="text-xl font-extrabold">Resumo do mês</p>
-              <p className="text-zinc-400 text-sm">OS concluídas + Vendas vendidas</p>
+              <p className="text-zinc-400 text-sm">
+                Só entra: OS <b>Concluídas</b> e Vendas <b>Vendidas</b>
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -154,28 +156,32 @@ export default function GanhosPage() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-400 text-sm">Faturamento (mês)</p>
+                  <p className="text-zinc-400 text-sm">Faturamento</p>
                   <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.faturamento)}</p>
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-400 text-sm">Custos (mês)</p>
+                  <p className="text-zinc-400 text-sm">Custos</p>
                   <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.custos)}</p>
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-400 text-sm">Lucro (mês)</p>
+                  <p className="text-zinc-400 text-sm">Lucro</p>
                   <p className="text-2xl font-extrabold mt-1 text-green-400">{formatBRL(resumo.lucro)}</p>
                 </div>
               </div>
 
               <div className="mt-4 text-xs text-zinc-500 space-y-1">
-                <p>OS concluídas: <b>{resumo.totalOS}</b> | Vendas vendidas: <b>{resumo.totalVendas}</b></p>
                 <p>
-                  Detalhe: Faturamento OS {formatBRL(resumo.detalhes.faturamentoOS)} + Vendas {formatBRL(resumo.detalhes.faturamentoVendas)}
+                  OS concluídas: <b>{resumo.totalOS}</b> | Vendas vendidas: <b>{resumo.totalVendas}</b>
                 </p>
                 <p>
-                  Detalhe: Custos OS {formatBRL(resumo.detalhes.custosOS)} + Vendas {formatBRL(resumo.detalhes.custosVendas)}
+                  Detalhe: Faturamento OS {formatBRL(resumo.detalhes.faturamentoOS)} + Vendas{" "}
+                  {formatBRL(resumo.detalhes.faturamentoVendas)}
+                </p>
+                <p>
+                  Detalhe: Custos OS {formatBRL(resumo.detalhes.custosOS)} + Vendas{" "}
+                  {formatBRL(resumo.detalhes.custosVendas)}
                 </p>
               </div>
             </>
@@ -185,3 +191,4 @@ export default function GanhosPage() {
     </main>
   );
 }
+
