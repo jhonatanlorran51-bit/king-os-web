@@ -108,6 +108,13 @@ export default function OrdemDetalhePage() {
     alert("OS excluída.");
     router.replace("/dashboard");
   }
+  
+<button
+  onClick={abrirWhatsAppComPdf}
+  className="bg-green-600 text-black px-4 py-2 rounded font-bold"
+>
+  Enviar PDF no WhatsApp
+</button>
 
   async function addAntes(files: FileList | null) {
     if (!files || !ordem) return;
