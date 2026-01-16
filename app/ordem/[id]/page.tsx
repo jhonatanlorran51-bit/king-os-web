@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { db } from "../../../lib/firebase";
 import {
   doc,
@@ -31,7 +31,6 @@ function osCurta(id: string) {
   const tail = (id || "").slice(-6).toUpperCase();
   return tail ? `OS #${tail}` : "OS";
 }
-
 function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
@@ -95,32 +94,40 @@ export default function OrdemDetalhePage() {
     if (id) carregar();
   }, [id]);
 
+  const status = ordem?.status || "Em análise";
+  const concluida = status === "Concluído";
+  const emReparo = status === "Em reparo";
+
+  const fotosAntes = ordem?.fotosAntes || [];
+  const fotosDepois = ordem?.fotosDepois || [];
+
+  const precisaFotosDepois = concluida && fotosDepois.length === 0;
+
+  /* ===== AÇÕES ===== */
   async function iniciarReparo() {
     await updateDoc(doc(db, "ordens", id), { status: "Em reparo", iniciadoEm: new Date() });
     await carregar();
-    alert("Status atualizado para Em reparo!");
   }
 
   async function concluir() {
     await updateDoc(doc(db, "ordens", id), { status: "Concluído", concluidoEm: new Date() });
     await carregar();
-    alert("Ordem concluída! Agora liberei as fotos (Depois).");
   }
 
   async function cancelar() {
     await updateDoc(doc(db, "ordens", id), { status: "Cancelado", canceladoEm: new Date() });
-    await carregar();
-    alert("Ordem cancelada!");
-  }
-
-  async function excluir() {
-    const ok = confirm("Excluir essa OS? (não dá para desfazer)");
-    if (!ok) return;
-    await deleteDoc(doc(db, "ordens", id));
-    alert("OS excluída.");
     router.replace("/dashboard");
   }
 
+  // Excluir fica só no histórico (não aqui)
+  async function excluirInterno() {
+    const ok = confirm("Excluir essa OS? (não dá para desfazer)");
+    if (!ok) return;
+    await deleteDoc(doc(db, "ordens", id));
+    router.replace("/historico");
+  }
+
+  /* ===== FOTOS ===== */
   async function addAntes(files: FileList | null) {
     if (!files || !ordem) return;
     const atuais = (ordem.fotosAntes || []).length + antesLocal.length;
@@ -128,9 +135,7 @@ export default function OrdemDetalhePage() {
     if (livres <= 0) return alert("Limite de 3 fotos (Antes).");
 
     const novas: string[] = [];
-    for (const f of Array.from(files).slice(0, livres)) {
-      novas.push(await compressImage(f, 900, 0.75));
-    }
+    for (const f of Array.from(files).slice(0, livres)) novas.push(await compressImage(f));
     setAntesLocal((p) => [...p, ...novas]);
   }
 
@@ -141,18 +146,15 @@ export default function OrdemDetalhePage() {
     if (livres <= 0) return alert("Limite de 3 fotos (Depois).");
 
     const novas: string[] = [];
-    for (const f of Array.from(files).slice(0, livres)) {
-      novas.push(await compressImage(f, 900, 0.75));
-    }
+    for (const f of Array.from(files).slice(0, livres)) novas.push(await compressImage(f));
     setDepoisLocal((p) => [...p, ...novas]);
   }
 
-  function removerAntesLocal(idx: number) {
-    setAntesLocal((p) => p.filter((_, i) => i !== idx));
+  function removeAntesLocal(i: number) {
+    setAntesLocal((p) => p.filter((_, idx) => idx !== i));
   }
-
-  function removerDepoisLocal(idx: number) {
-    setDepoisLocal((p) => p.filter((_, i) => i !== idx));
+  function removeDepoisLocal(i: number) {
+    setDepoisLocal((p) => p.filter((_, idx) => idx !== i));
   }
 
   async function salvarFotos() {
@@ -163,11 +165,9 @@ export default function OrdemDetalhePage() {
         fotosAntes: [...(ordem.fotosAntes || []), ...antesLocal].slice(0, 3),
         fotosDepois: [...(ordem.fotosDepois || []), ...depoisLocal].slice(0, 3),
       });
-
       setAntesLocal([]);
       setDepoisLocal([]);
       await carregar();
-      alert("Fotos salvas com sucesso!");
     } catch (e) {
       console.error(e);
       alert("Erro ao salvar fotos. Veja o console (F12).");
@@ -179,29 +179,33 @@ export default function OrdemDetalhePage() {
   async function enviarPdfWhatsApp() {
     if (!ordem) return;
     setEnviandoWhats(true);
-
     try {
       const ref = await addDoc(collection(db, "shares"), {
         cliente: ordem.cliente || "",
+        telefone: ordem.telefone || "",
         marca: ordem.marca || "",
         modelo: ordem.modelo || "",
         reparos: ordem.reparos || [],
         estado: ordem.estado || [],
         valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
+        status: ordem.status || "",
         fotosAntes: ordem.fotosAntes || [],
         fotosDepois: ordem.fotosDepois || [],
         criadoEm: serverTimestamp(),
       });
 
       const link = `${window.location.origin}/s/${ref.id}`;
-      const msg = `Olá ${ordem.cliente || ""}! Segue o PDF da sua OS ${osCurta(id)}:\n\n${link}`;
-
+      const msg = `Olá ${ordem.cliente || ""}! Segue sua OS:\n\n${link}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gerar link público (shares).");
     } finally {
       setEnviandoWhats(false);
     }
   }
 
+  /* ===== UI ===== */
   if (carregando) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
@@ -218,102 +222,213 @@ export default function OrdemDetalhePage() {
     );
   }
 
-  const concluida = (ordem.status || "") === "Concluído";
-  const fotosAntes = ordem.fotosAntes || [];
-  const fotosDepois = ordem.fotosDepois || [];
+  const canShowActions = useMemo(() => {
+    // deixa a UI limpa: ações só mudam por status
+    return true;
+  }, []);
 
   return (
-    <main className="min-h-screen bg-black text-white p-6">
-      {/* MENU */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">Voltar</button>
-        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">Home</Link>
-        <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">Ativas</Link>
-        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">Sair</Link>
-      </div>
-
-      <h1 className="text-2xl font-bold mb-2">Detalhes da OS</h1>
-      <p className="text-zinc-300 mb-4"><b>{osCurta(id)}</b></p>
-
-      <div className="bg-zinc-900 p-4 rounded">
-        <p><b>Cliente:</b> {ordem.cliente || "-"}</p>
-        <p><b>Marca:</b> {ordem.marca || "-"}</p>
-        <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
-        <p><b>Status:</b> {ordem.status || "Em análise"}</p>
-        <p><b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}</p>
-
-        {/* FOTOS ANTES */}
-        <div className="mt-6">
-          <p className="font-bold mb-2">Fotos (Antes) — como chegou (até 3)</p>
-
-          <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
-            Selecionar fotos (Antes)
-            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addAntes(e.target.files)} />
-          </label>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-            {fotosAntes.map((src, i) => (
-              <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded border border-zinc-700" />
-            ))}
-            {antesLocal.map((src, i) => (
-              <div key={i} className="relative">
-                <img src={src} alt={`Antes novo ${i + 1}`} className="rounded border border-zinc-700" />
-                <button onClick={() => removerAntesLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
-              </div>
-            ))}
-          </div>
+    <main className="min-h-screen bg-black text-white">
+      {/* TOP (só voltar) */}
+      <header className="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => router.back()}
+            className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 font-bold"
+          >
+            Voltar
+          </button>
+          <span className="text-zinc-400 text-sm">{osCurta(id)}</span>
         </div>
+      </header>
 
-        {/* FOTOS DEPOIS */}
-        <div className="mt-6">
-          <p className="font-bold mb-2">Fotos (Depois) — entrega (até 3)</p>
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        {/* CARD PRINCIPAL */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xl font-bold">{ordem.cliente || "-"}</p>
+              <p className="text-zinc-400 text-sm">
+                {(ordem.marca || "-") + " • " + (ordem.modelo || "-")}
+              </p>
+              {ordem.telefone ? <p className="text-zinc-500 text-xs mt-1">{ordem.telefone}</p> : null}
+            </div>
 
-          {!concluida ? (
-            <p className="text-zinc-300">Conclua a ordem para liberar as fotos (Depois).</p>
-          ) : (
-            <>
-              <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
-                Selecionar fotos (Depois)
-                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addDepois(e.target.files)} />
-              </label>
+            <span className="text-xs font-bold px-3 py-1 rounded-full border border-zinc-700 text-zinc-300">
+              {status}
+            </span>
+          </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                {fotosDepois.map((src, i) => (
-                  <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded border border-zinc-700" />
-                ))}
-                {depoisLocal.map((src, i) => (
-                  <div key={i} className="relative">
-                    <img src={src} alt={`Depois novo ${i + 1}`} className="rounded border border-zinc-700" />
-                    <button onClick={() => removerDepoisLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
-                  </div>
-                ))}
-              </div>
-            </>
+          <div className="mt-4">
+            <p className="text-zinc-300">
+              Valor final:{" "}
+              <span className="text-green-400 font-extrabold">
+                {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}
+              </span>
+            </p>
+          </div>
+
+          {/* AÇÕES (aparecem só as necessárias) */}
+          {canShowActions && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {/* Em análise -> iniciar reparo */}
+              {status === "Em análise" && (
+                <button
+                  onClick={iniciarReparo}
+                  className="px-4 py-2 rounded-xl font-bold bg-blue-500 text-black"
+                >
+                  Iniciar reparo
+                </button>
+              )}
+
+              {/* Em reparo -> concluir */}
+              {emReparo && (
+                <button
+                  onClick={concluir}
+                  className="px-4 py-2 rounded-xl font-bold bg-green-500 text-black"
+                >
+                  Concluir
+                </button>
+              )}
+
+              {/* Cancelar (não aparece quando já concluída) */}
+              {!concluida && (
+                <button
+                  onClick={cancelar}
+                  className="px-4 py-2 rounded-xl font-bold bg-yellow-500 text-black"
+                >
+                  Cancelar
+                </button>
+              )}
+
+              {/* Quando concluída -> só WhatsApp + PDF */}
+              {concluida && (
+                <>
+                  <button
+                    onClick={enviarPdfWhatsApp}
+                    disabled={enviandoWhats}
+                    className="px-4 py-2 rounded-xl font-bold bg-green-600 text-black disabled:opacity-50"
+                  >
+                    {enviandoWhats ? "Gerando..." : "Enviar no WhatsApp"}
+                  </button>
+
+                  <Link
+                    href={`/pdf/${id}`}
+                    className="px-4 py-2 rounded-xl font-bold bg-white text-black"
+                  >
+                    PDF
+                  </Link>
+                </>
+              )}
+            </div>
           )}
         </div>
 
-        <button
-          onClick={salvarFotos}
-          disabled={salvandoFotos}
-          className="mt-6 bg-yellow-500 text-black px-6 py-2 rounded font-bold disabled:opacity-50"
-        >
-          {salvandoFotos ? "Salvando..." : "Salvar Fotos"}
-        </button>
+        {/* SEÇÕES EM DETAILS (limpo) */}
+        <div className="mt-4 space-y-4">
+          <details className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4" open>
+            <summary className="cursor-pointer font-bold">Reparos</summary>
+            <ul className="list-disc pl-6 text-zinc-200 mt-3">
+              {(ordem.reparos || []).map((r, i) => <li key={i}>{r}</li>)}
+              {(ordem.reparos || []).length === 0 && <li>-</li>}
+            </ul>
+          </details>
 
-        {/* AÇÕES */}
-        <div className="flex gap-2 mt-6 flex-wrap">
-          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">Iniciar Reparo</button>
-          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">Concluir</button>
-          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">Cancelar</button>
-          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">Excluir</button>
+          <details className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4" open>
+            <summary className="cursor-pointer font-bold">Estado do aparelho</summary>
+            <ul className="list-disc pl-6 text-zinc-200 mt-3">
+              {(ordem.estado || []).map((e, i) => <li key={i}>{e}</li>)}
+              {(ordem.estado || []).length === 0 && <li>-</li>}
+            </ul>
+          </details>
 
-          <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
-            PDF (interno)
-          </Link>
+          {/* Fotos Antes */}
+          <details className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4" open>
+            <summary className="cursor-pointer font-bold">Fotos (Antes)</summary>
 
-          <button onClick={enviarPdfWhatsApp} disabled={enviandoWhats} className="bg-green-600 text-black px-4 py-2 rounded font-bold disabled:opacity-50">
-            {enviandoWhats ? "Gerando link..." : "Enviar PDF no WhatsApp"}
-          </button>
+            <div className="mt-3">
+              <label className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
+                Selecionar
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addAntes(e.target.files)}
+                />
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                {fotosAntes.map((src, i) => (
+                  <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded-xl border border-zinc-800" />
+                ))}
+                {antesLocal.map((src, i) => (
+                  <div key={i} className="relative">
+                    <img src={src} alt={`Antes novo ${i + 1}`} className="rounded-xl border border-zinc-800" />
+                    <button
+                      onClick={() => removeAntesLocal(i)}
+                      className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded-lg font-bold"
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </details>
+
+          {/* Fotos Depois - só aparece quando concluída, e ainda mais útil se estiver faltando */}
+          {concluida && (
+            <details className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4" open={precisaFotosDepois}>
+              <summary className="cursor-pointer font-bold">Fotos (Depois)</summary>
+
+              <div className="mt-3">
+                <label className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
+                  Selecionar
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => addDepois(e.target.files)}
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                  {fotosDepois.map((src, i) => (
+                    <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded-xl border border-zinc-800" />
+                  ))}
+                  {depoisLocal.map((src, i) => (
+                    <div key={i} className="relative">
+                      <img src={src} alt={`Depois novo ${i + 1}`} className="rounded-xl border border-zinc-800" />
+                      <button
+                        onClick={() => removeDepoisLocal(i)}
+                        className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded-lg font-bold"
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
+          )}
+
+          {/* Salvar Fotos só aparece se houver algo novo */}
+          {(antesLocal.length > 0 || depoisLocal.length > 0) && (
+            <button
+              onClick={salvarFotos}
+              disabled={salvandoFotos}
+              className="w-full bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+            >
+              {salvandoFotos ? "Salvando..." : "Salvar fotos"}
+            </button>
+          )}
+
+          {/* Botão Excluir escondido (se você quiser só no histórico, deixa assim) */}
+          {/* <button onClick={excluirInterno} className="w-full bg-red-500 text-black px-6 py-3 rounded-2xl font-extrabold">
+            Excluir (apenas se necessário)
+          </button> */}
         </div>
       </div>
     </main>
