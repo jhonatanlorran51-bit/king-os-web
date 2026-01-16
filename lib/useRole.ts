@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { auth, db } from "./firebase";
 
 type Role = "admin" | "tecnico" | null;
 
@@ -13,33 +13,37 @@ export function useRole() {
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchRole(user: User | null) {
-    if (!user) {
-      setRole(null);
-      setUid(null);
-      setEmail(null);
-      setLoading(false);
-      return;
-    }
-
-    setUid(user.uid);
-    setEmail(user.email || null);
-
-    try {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      setRole(snap.exists() ? (snap.data().role as any) : null);
-    } catch {
-      setRole(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    setLoading(true);
-    const unsub = onAuthStateChanged(auth, (user) => {
-      fetchRole(user);
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
+
+      if (!user) {
+        setRole(null);
+        setUid(null);
+        setEmail(null);
+        setLoading(false);
+        return;
+      }
+
+      setUid(user.uid);
+      setEmail(user.email || null);
+
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          setRole((data.role as Role) || null);
+        } else {
+          setRole(null);
+        }
+      } catch (e) {
+        console.error("Erro ao ler users/{uid}:", e);
+        setRole(null);
+      } finally {
+        setLoading(false);
+      }
     });
+
     return () => unsub();
   }, []);
 
