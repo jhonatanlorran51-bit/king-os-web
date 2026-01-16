@@ -9,7 +9,6 @@ function toNum(v: string) {
   const n = Number(v.replace(",", "."));
   return isFinite(n) ? n : null;
 }
-
 function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
@@ -66,14 +65,10 @@ export default function VendaDetalhePage() {
 
   const status = item?.status || "Em estoque";
   const isVendido = status === "Vendido";
-  const isCancelado = status === "Cancelado";
 
   async function marcarComoVendido() {
     const v = toNum(valorVendido);
-    if (v === null) {
-      alert("Preencha o valor real vendido.");
-      return;
-    }
+    if (v === null) return alert("Preencha o valor real vendido.");
 
     setSalvando(true);
     setMsg("");
@@ -85,7 +80,7 @@ export default function VendaDetalhePage() {
         lucro: v - custo,
       });
       await carregar();
-      setMsg("Venda marcada como Vendido!");
+      setMsg("Marcado como Vendido!");
     } catch (e: any) {
       console.error(e);
       setMsg(e?.message || "Erro ao salvar.");
@@ -94,29 +89,9 @@ export default function VendaDetalhePage() {
     }
   }
 
+  // ✅ Só existe quando já estava vendido e cliente desistiu => volta a "Em estoque" (Disponível)
   async function cancelarVenda() {
-    const ok = confirm("Cancelar esta venda? (não vai entrar nos ganhos)");
-    if (!ok) return;
-
-    setSalvando(true);
-    setMsg("");
-    try {
-      await updateDoc(doc(db, "vendas", id), {
-        status: "Cancelado",
-        canceladoEm: new Date(),
-      });
-      await carregar();
-      setMsg("Venda cancelada.");
-    } catch (e: any) {
-      console.error(e);
-      setMsg(e?.message || "Erro ao cancelar.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function reativarVenda() {
-    const ok = confirm("Reativar esta venda? (volta para Em estoque)");
+    const ok = confirm("Cancelar a venda? Vai voltar para DISPONÍVEL (Em estoque).");
     if (!ok) return;
 
     setSalvando(true);
@@ -124,13 +99,16 @@ export default function VendaDetalhePage() {
     try {
       await updateDoc(doc(db, "vendas", id), {
         status: "Em estoque",
-        canceladoEm: null,
+        valorVendido: null,
+        vendidoEm: null,
+        lucro: null,
+        canceladoEm: new Date(), // só histórico interno
       });
       await carregar();
-      setMsg("Venda reativada! Agora você pode vender normalmente.");
+      setMsg("Venda cancelada. Aparelho voltou para DISPONÍVEL.");
     } catch (e: any) {
       console.error(e);
-      setMsg(e?.message || "Erro ao reativar.");
+      setMsg(e?.message || "Erro ao cancelar.");
     } finally {
       setSalvando(false);
     }
@@ -184,7 +162,14 @@ export default function VendaDetalhePage() {
             </p>
 
             <div className="mt-4 text-sm text-zinc-300 space-y-1">
-              <p><b>Status:</b> {status}</p>
+              <p>
+                <b>Status:</b>{" "}
+                {isVendido ? (
+                  <span className="text-green-400 font-bold">Vendido</span>
+                ) : (
+                  <span className="text-blue-400 font-bold">Disponível</span>
+                )}
+              </p>
               <p><b>Pago no aparelho:</b> {typeof item.valorAparelho === "number" ? formatBRL(item.valorAparelho) : "-"}</p>
               <p><b>Pago nas peças:</b> {typeof item.valorPecas === "number" ? formatBRL(item.valorPecas) : "-"}</p>
               <p><b>Custo total:</b> {formatBRL(custo)}</p>
@@ -195,8 +180,6 @@ export default function VendaDetalhePage() {
             <hr className="border-zinc-800 my-5" />
 
             <p className="font-bold mb-2">Valor real vendido</p>
-
-            {/* ✅ Mesmo cancelado: você pode editar e deixar pronto */}
             <input
               className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700"
               placeholder="Valor real vendido"
@@ -207,59 +190,46 @@ export default function VendaDetalhePage() {
 
             {lucroVenda !== null && (
               <p className="mt-2 text-sm text-zinc-300">
-                Lucro desta venda:{" "}
+                Lucro (se vender por esse valor):{" "}
                 <b className={lucroVenda >= 0 ? "text-green-400" : "text-red-400"}>
                   {formatBRL(lucroVenda)}
                 </b>
               </p>
             )}
 
-            {/* ✅ Só permite marcar como vendido se NÃO estiver cancelado */}
-            {!isCancelado && (
+            <div className="mt-4 flex flex-wrap gap-2">
               <button
                 onClick={marcarComoVendido}
                 disabled={salvando}
-                className="mt-4 bg-green-600 hover:bg-green-500 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+                className="bg-green-600 hover:bg-green-500 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
               >
-                {salvando ? "Salvando..." : isVendido ? "Atualizar vendido" : "Marcar como Vendido"}
+                {salvando ? "Salvando..." : "Marcar como Vendido"}
               </button>
-            )}
 
-            {/* AÇÕES */}
-            <div className="mt-5 flex flex-wrap gap-2">
-              {!isVendido && !isCancelado && (
+              {/* ✅ SOMENTE QUANDO JÁ ESTÁ VENDIDO */}
+              {isVendido && (
                 <button
                   onClick={cancelarVenda}
                   disabled={salvando}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-5 py-2 rounded-xl font-extrabold disabled:opacity-50"
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
                 >
-                  Cancelar
+                  Cancelar venda
                 </button>
               )}
 
-              {isCancelado && (
-                <button
-                  onClick={reativarVenda}
-                  disabled={salvando}
-                  className="bg-blue-500 hover:bg-blue-400 text-black px-5 py-2 rounded-xl font-extrabold disabled:opacity-50"
-                >
-                  Reativar venda
-                </button>
-              )}
-
+              {/* ✅ SEMPRE PODE EXCLUIR */}
               <button
                 onClick={excluirVenda}
                 disabled={salvando}
-                className="bg-red-500 hover:bg-red-400 text-black px-5 py-2 rounded-xl font-extrabold disabled:opacity-50"
+                className="bg-red-500 hover:bg-red-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
               >
                 Excluir
               </button>
             </div>
 
-            {isCancelado && (
-              <p className="text-zinc-400 text-sm mt-4">
-                Esta venda está <b>Cancelada</b> e não entra nos ganhos.
-                Para vender de novo, clique em <b>Reativar venda</b>.
+            {!isVendido && (
+              <p className="text-zinc-500 text-xs mt-4">
+                Em <b>Disponível</b>, não existe “Cancelar venda” (porque ainda não foi vendido).
               </p>
             )}
           </div>
@@ -268,4 +238,5 @@ export default function VendaDetalhePage() {
     </main>
   );
 }
+
 
