@@ -74,7 +74,7 @@ export default function OrdemDetalhePage() {
   const params = useParams();
   const id = String(params?.id || "");
 
-  const { role, loading: loadingRole } = useRole();
+  const { role, email, uid, loading: loadingRole } = useRole();
 
   const [ordem, setOrdem] = useState<Ordem | null>(null);
   const [carregando, setCarregando] = useState(true);
