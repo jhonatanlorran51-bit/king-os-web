@@ -50,6 +50,7 @@ export default function OrdensPage() {
   const router = useRouter();
 
   const [cliente, setCliente] = useState("");
+  const [telefone, setTelefone] = useState(""); // ✅ NOVO
   const [modelo, setModelo] = useState("");
 
   // valores
@@ -125,6 +126,7 @@ export default function OrdensPage() {
 
       const docRef = await addDoc(collection(db, "ordens"), {
         cliente: cliente.trim(),
+        telefone: telefone.trim(), // ✅ NOVO (WhatsApp)
         modelo: modelo.trim(),
         reparos: reparosFinal,
         estado: estadoFinal,
@@ -172,6 +174,17 @@ export default function OrdensPage() {
         value={cliente}
         onChange={(e) => setCliente(e.target.value)}
       />
+
+      {/* ✅ TELEFONE WHATSAPP */}
+      <input
+        className="w-full mb-2 p-2 rounded bg-zinc-800 border border-zinc-700"
+        placeholder="Telefone (WhatsApp) ex: 67999998888"
+        value={telefone}
+        onChange={(e) => setTelefone(e.target.value)}
+      />
+      <p className="text-zinc-400 text-sm mb-3">
+        Pode ser com ou sem espaços/traços. Ex: (67) 99999-8888
+      </p>
 
       <input
         className="w-full mb-3 p-2 rounded bg-zinc-800 border border-zinc-700"
@@ -247,13 +260,19 @@ export default function OrdensPage() {
       <h2 className="font-bold mb-2">Fotos (Antes)</h2>
       <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
         Selecionar fotos (Antes)
-        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addFotosAntes(e.target.files)} />
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => addFotosAntes(e.target.files)}
+        />
       </label>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
         {fotosAntesLocal.map((src, i) => (
           <div key={i} className="relative">
-            <img src={src} className="rounded border border-zinc-700" />
+            <img src={src} className="rounded border border-zinc-700" alt={`Foto antes ${i + 1}`} />
             <button
               onClick={() => removerFotoAntes(i)}
               className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
