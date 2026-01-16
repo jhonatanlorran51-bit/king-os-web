@@ -9,6 +9,7 @@ import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 type Ordem = {
   cliente?: string;
   modelo?: string;
+  telefone?: string; // <- opcional (se tiver, manda direto)
   reparos?: string[];
   estado?: string[];
   valorTotal?: number | null;
@@ -108,13 +109,6 @@ export default function OrdemDetalhePage() {
     alert("OS excluída.");
     router.replace("/dashboard");
   }
-  
-<button
-  onClick={abrirWhatsAppComPdf}
-  className="bg-green-600 text-black px-4 py-2 rounded font-bold"
->
-  Enviar PDF no WhatsApp
-</button>
 
   async function addAntes(files: FileList | null) {
     if (!files || !ordem) return;
@@ -139,21 +133,6 @@ export default function OrdemDetalhePage() {
     for (const f of toTake) novas.push(await compressImage(f, 900, 0.75));
     setDepoisLocal((p) => [...p, ...novas]);
   }
-  
-function abrirWhatsAppComPdf() {
-  const pdfUrl = `${window.location.origin}/pdf/${id}`;
-
-  const nome = ordem?.cliente ? ` ${ordem.cliente}` : "";
-  const msg = `Olá${nome}! Segue o PDF do seu orçamento/OS ${osCurta(id)}:\n\n${pdfUrl}`;
-
-  const tel = (ordem?.telefone || "").replace(/\D/g, "");
-
-  const waUrl = tel
-    ? `https://wa.me/${tel.startsWith("55") ? tel : `55${tel}`}?text=${encodeURIComponent(msg)}`
-    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-
-  window.open(waUrl, "_blank", "noopener,noreferrer");
-}
 
   function removerAntesLocal(idx: number) {
     setAntesLocal((p) => p.filter((_, i) => i !== idx));
@@ -182,6 +161,23 @@ function abrirWhatsAppComPdf() {
     }
   }
 
+  // ✅ WHATSAPP: manda link do PDF com mensagem pronta
+  function enviarPdfWhatsApp() {
+    if (!ordem) return;
+
+    const pdfUrl = `${window.location.origin}/pdf/${id}`;
+    const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
+    const msg = `Olá${nome}! Segue o PDF do seu orçamento/OS ${osCurta(id)}:\n\n${pdfUrl}`;
+
+    const tel = (ordem.telefone || "").replace(/\D/g, "");
+
+    const waUrl = tel
+      ? `https://wa.me/${tel.startsWith("55") ? tel : `55${tel}`}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+  }
+
   if (carregando) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
@@ -206,31 +202,61 @@ function abrirWhatsAppComPdf() {
     <main className="min-h-screen bg-black text-white p-6">
       {/* MENU */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">Voltar</button>
-        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">Home</Link>
-        <Link href="/ordens" className="bg-zinc-700 px-4 py-2 rounded font-bold">Nova Ordem</Link>
-        <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">Ativas</Link>
-        <Link href="/concluidas" className="bg-zinc-700 px-4 py-2 rounded font-bold">Concluídas</Link>
-        <Link href="/historico" className="bg-zinc-700 px-4 py-2 rounded font-bold">Histórico</Link>
-        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">Sair</Link>
+        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Voltar
+        </button>
+        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Home
+        </Link>
+        <Link href="/ordens" className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Nova Ordem
+        </Link>
+        <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Ativas
+        </Link>
+        <Link href="/concluidas" className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Concluídas
+        </Link>
+        <Link href="/historico" className="bg-zinc-700 px-4 py-2 rounded font-bold">
+          Histórico
+        </Link>
+        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">
+          Sair
+        </Link>
       </div>
 
       <h1 className="text-2xl font-bold mb-2">Detalhes da OS</h1>
-      <p className="text-zinc-300 mb-4"><b>{osCurta(id)}</b></p>
+      <p className="text-zinc-300 mb-4">
+        <b>{osCurta(id)}</b>
+      </p>
 
       <div className="bg-zinc-900 p-4 rounded">
-        <p><b>Cliente:</b> {ordem.cliente || "-"}</p>
-        <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
-        <p><b>Status:</b> {ordem.status || "Em análise"}</p>
-        <p><b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}</p>
+        <p>
+          <b>Cliente:</b> {ordem.cliente || "-"}
+        </p>
+        <p>
+          <b>Modelo:</b> {ordem.modelo || "-"}
+        </p>
+        <p>
+          <b>Status:</b> {ordem.status || "Em análise"}
+        </p>
+        <p>
+          <b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}
+        </p>
 
-        {/* FOTOS ANTES (sempre pode) */}
+        {/* FOTOS ANTES */}
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Antes) — como chegou (até 3)</p>
 
           <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
             Selecionar fotos (Antes)
-            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addAntes(e.target.files)} />
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => addAntes(e.target.files)}
+            />
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -240,7 +266,10 @@ function abrirWhatsAppComPdf() {
             {antesLocal.map((src, i) => (
               <div key={i} className="relative">
                 <img src={src} alt={`Antes novo ${i + 1}`} className="rounded border border-zinc-700" />
-                <button onClick={() => removerAntesLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">
+                <button
+                  onClick={() => removerAntesLocal(i)}
+                  className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
+                >
                   X
                 </button>
               </div>
@@ -248,19 +277,23 @@ function abrirWhatsAppComPdf() {
           </div>
         </div>
 
-        {/* FOTOS DEPOIS (só aparece quando concluída) */}
+        {/* FOTOS DEPOIS */}
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Depois) — entrega (até 3)</p>
 
           {!concluida ? (
-            <p className="text-zinc-300">
-              Conclua a ordem para liberar as fotos (Depois).
-            </p>
+            <p className="text-zinc-300">Conclua a ordem para liberar as fotos (Depois).</p>
           ) : (
             <>
               <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
                 Selecionar fotos (Depois)
-                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addDepois(e.target.files)} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addDepois(e.target.files)}
+                />
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -270,7 +303,10 @@ function abrirWhatsAppComPdf() {
                 {depoisLocal.map((src, i) => (
                   <div key={i} className="relative">
                     <img src={src} alt={`Depois novo ${i + 1}`} className="rounded border border-zinc-700" />
-                    <button onClick={() => removerDepoisLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">
+                    <button
+                      onClick={() => removerDepoisLocal(i)}
+                      className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
+                    >
                       X
                     </button>
                   </div>
@@ -289,14 +325,26 @@ function abrirWhatsAppComPdf() {
         </button>
 
         <div className="flex gap-2 mt-6 flex-wrap">
-          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">Iniciar Reparo</button>
-          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">Concluir</button>
-          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">Cancelar</button>
-          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">Excluir</button>
+          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">
+            Iniciar Reparo
+          </button>
+          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">
+            Concluir
+          </button>
+          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">
+            Cancelar
+          </button>
+          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">
+            Excluir
+          </button>
 
           <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
             PDF
           </Link>
+
+          <button onClick={enviarPdfWhatsApp} className="bg-green-600 text-black px-4 py-2 rounded font-bold">
+            Enviar PDF no WhatsApp
+          </button>
         </div>
       </div>
     </main>
