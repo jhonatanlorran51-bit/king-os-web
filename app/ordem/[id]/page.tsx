@@ -132,6 +132,21 @@ export default function OrdemDetalhePage() {
     for (const f of toTake) novas.push(await compressImage(f, 900, 0.75));
     setDepoisLocal((p) => [...p, ...novas]);
   }
+  
+function abrirWhatsAppComPdf() {
+  const pdfUrl = `${window.location.origin}/pdf/${id}`;
+
+  const nome = ordem?.cliente ? ` ${ordem.cliente}` : "";
+  const msg = `Olá${nome}! Segue o PDF do seu orçamento/OS ${osCurta(id)}:\n\n${pdfUrl}`;
+
+  const tel = (ordem?.telefone || "").replace(/\D/g, "");
+
+  const waUrl = tel
+    ? `https://wa.me/${tel.startsWith("55") ? tel : `55${tel}`}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+  window.open(waUrl, "_blank", "noopener,noreferrer");
+}
 
   function removerAntesLocal(idx: number) {
     setAntesLocal((p) => p.filter((_, i) => i !== idx));
