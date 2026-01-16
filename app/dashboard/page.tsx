@@ -17,25 +17,46 @@ export default function DashboardPage() {
   const router = useRouter();
   const [ordens, setOrdens] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "ordens"), (snap) => {
-      const lista = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      const ativas = lista.filter(
-        (o) => (o.status || "Em análise") !== "Concluído" && (o.status || "Em análise") !== "Cancelado"
-      );
-      setOrdens(ativas);
-      setCarregando(false);
-    });
+    setCarregando(true);
+    setErro(null);
+
+    const unsub = onSnapshot(
+      collection(db, "ordens"),
+      (snap) => {
+        const lista = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const ativas = lista.filter(
+          (o) =>
+            (o.status || "Em análise") !== "Concluído" &&
+            (o.status || "Em análise") !== "Cancelado"
+        );
+        setOrdens(ativas);
+        setCarregando(false);
+      },
+      (err) => {
+        console.error("ERRO onSnapshot(ordens):", err);
+        setErro(
+          err?.message ||
+            "Erro ao carregar ordens. Confira as permissões (Firestore Rules)."
+        );
+        setCarregando(false);
+      }
+    );
+
     return () => unsub();
   }, []);
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* só voltar */}
+      {/* topo: só voltar */}
       <header className="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button onClick={() => router.back()} className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 font-bold">
+          <button
+            onClick={() => router.back()}
+            className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 font-bold"
+          >
             Voltar
           </button>
           <span className="text-zinc-400 text-sm">Ordens Ativas</span>
@@ -45,37 +66,61 @@ export default function DashboardPage() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         {carregando && <p className="text-zinc-400">Carregando...</p>}
 
-        {!carregando && ordens.length === 0 && (
+        {!carregando && erro && (
+          <div className="bg-zinc-950 border border-red-700 rounded-2xl p-5">
+            <p className="font-bold text-red-400 mb-2">Não consegui carregar as ordens</p>
+            <p className="text-zinc-300 text-sm break-words">{erro}</p>
+            <p className="text-zinc-500 text-xs mt-3">
+              Dica: isso costuma ser Rules do Firestore bloqueando leitura.
+            </p>
+            <Link
+              href="/"
+              className="inline-block mt-4 bg-zinc-800 px-4 py-2 rounded-xl font-bold"
+            >
+              Voltar para Home
+            </Link>
+          </div>
+        )}
+
+        {!carregando && !erro && ordens.length === 0 && (
           <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
             <p className="text-zinc-400">Nenhuma ordem ativa.</p>
-            <Link href="/ordens" className="inline-block mt-4 bg-yellow-500 text-black px-5 py-3 rounded-2xl font-extrabold">
+            <Link
+              href="/ordens"
+              className="inline-block mt-4 bg-yellow-500 text-black px-5 py-3 rounded-2xl font-extrabold"
+            >
               Criar nova OS
             </Link>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {ordens.map((o) => (
-            <div key={o.id} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-bold text-lg">{o.cliente || "-"}</p>
-                  <p className="text-zinc-400 text-sm">
-                    {o.marca || "-"} • {o.modelo || "-"}
-                  </p>
-                </div>
-                <span className={badgeStatus(o.status)}>{o.status || "Em análise"}</span>
-              </div>
-
-              <Link
-                href={`/ordem/${o.id}`}
-                className="inline-block mt-4 bg-white text-black px-4 py-2 rounded-xl font-bold"
+        {!carregando && !erro && ordens.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {ordens.map((o) => (
+              <div
+                key={o.id}
+                className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4"
               >
-                Abrir
-              </Link>
-            </div>
-          ))}
-        </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-lg">{o.cliente || "-"}</p>
+                    <p className="text-zinc-400 text-sm">
+                      {(o.marca || "-") + " • " + (o.modelo || "-")}
+                    </p>
+                  </div>
+                  <span className={badgeStatus(o.status)}>{o.status || "Em análise"}</span>
+                </div>
+
+                <Link
+                  href={`/ordem/${o.id}`}
+                  className="inline-block mt-4 bg-white text-black px-4 py-2 rounded-xl font-bold"
+                >
+                  Abrir
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );
