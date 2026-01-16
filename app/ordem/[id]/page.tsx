@@ -16,9 +16,9 @@ import {
 
 type Ordem = {
   cliente?: string;
+  telefone?: string;
   marca?: string;
   modelo?: string;
-  telefone?: string;
   reparos?: string[];
   estado?: string[];
   valorTotal?: number | null;
