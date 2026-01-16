@@ -50,7 +50,10 @@ export default function OrdensPage() {
   const router = useRouter();
 
   const [cliente, setCliente] = useState("");
-  const [telefone, setTelefone] = useState(""); // ✅ NOVO
+
+  // ✅ NOVO: marca
+  const [marca, setMarca] = useState("");
+
   const [modelo, setModelo] = useState("");
 
   // valores
@@ -77,7 +80,7 @@ export default function OrdensPage() {
     return {
       valorPeca: p,
       valorReparo: r,
-      valorTotal: r,
+      valorTotal: r, // cliente vê só o final
       lucro: r - p,
     };
   }, [valorPeca, valorReparo]);
@@ -106,8 +109,16 @@ export default function OrdensPage() {
 
   /* ======== SALVAR ORDEM ======== */
   async function salvarOrdem() {
-    if (!cliente.trim() || !modelo.trim()) {
-      alert("Preencha Cliente e Modelo.");
+    if (!cliente.trim()) {
+      alert("Preencha o nome do cliente.");
+      return;
+    }
+    if (!marca.trim()) {
+      alert("Preencha a marca do aparelho.");
+      return;
+    }
+    if (!modelo.trim()) {
+      alert("Preencha o modelo do aparelho.");
       return;
     }
 
@@ -126,7 +137,10 @@ export default function OrdensPage() {
 
       const docRef = await addDoc(collection(db, "ordens"), {
         cliente: cliente.trim(),
-        telefone: telefone.trim(), // ✅ NOVO (WhatsApp)
+
+        // ✅ NOVO
+        marca: marca.trim(),
+
         modelo: modelo.trim(),
         reparos: reparosFinal,
         estado: estadoFinal,
@@ -175,23 +189,22 @@ export default function OrdensPage() {
         onChange={(e) => setCliente(e.target.value)}
       />
 
-      {/* ✅ TELEFONE WHATSAPP */}
-      <input
-        className="w-full mb-2 p-2 rounded bg-zinc-800 border border-zinc-700"
-        placeholder="Telefone (WhatsApp) ex: 67999998888"
-        value={telefone}
-        onChange={(e) => setTelefone(e.target.value)}
-      />
-      <p className="text-zinc-400 text-sm mb-3">
-        Pode ser com ou sem espaços/traços. Ex: (67) 99999-8888
-      </p>
+      {/* ✅ Marca + Modelo lado a lado */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <input
+          className="w-full p-2 rounded bg-zinc-800 border border-zinc-700"
+          placeholder="Marca (ex: Samsung, Apple, Xiaomi...)"
+          value={marca}
+          onChange={(e) => setMarca(e.target.value)}
+        />
 
-      <input
-        className="w-full mb-3 p-2 rounded bg-zinc-800 border border-zinc-700"
-        placeholder="Modelo do aparelho"
-        value={modelo}
-        onChange={(e) => setModelo(e.target.value)}
-      />
+        <input
+          className="w-full p-2 rounded bg-zinc-800 border border-zinc-700"
+          placeholder="Modelo (ex: A14, iPhone 11, Redmi Note 12...)"
+          value={modelo}
+          onChange={(e) => setModelo(e.target.value)}
+        />
+      </div>
 
       {/* FINANCEIRO */}
       <h2 className="font-bold mt-4 mb-2">Financeiro (interno)</h2>
@@ -260,19 +273,13 @@ export default function OrdensPage() {
       <h2 className="font-bold mb-2">Fotos (Antes)</h2>
       <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
         Selecionar fotos (Antes)
-        <input
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => addFotosAntes(e.target.files)}
-        />
+        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addFotosAntes(e.target.files)} />
       </label>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
         {fotosAntesLocal.map((src, i) => (
           <div key={i} className="relative">
-            <img src={src} className="rounded border border-zinc-700" alt={`Foto antes ${i + 1}`} />
+            <img src={src} alt={`Antes ${i + 1}`} className="rounded border border-zinc-700" />
             <button
               onClick={() => removerFotoAntes(i)}
               className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
