@@ -10,6 +10,8 @@ export function useRole() {
 
   useEffect(() => {
     const user = auth.currentUser;
+
+    // se não tiver logado ainda
     if (!user) {
       setRole(null);
       setLoading(false);
@@ -20,6 +22,8 @@ export function useRole() {
       try {
         const snap = await getDoc(doc(db, "users", user.uid));
         setRole(snap.exists() ? (snap.data().role as any) : null);
+      } catch {
+        setRole(null);
       } finally {
         setLoading(false);
       }
