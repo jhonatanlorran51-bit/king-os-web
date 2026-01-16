@@ -44,7 +44,6 @@ export default function VendasPage() {
   }, []);
 
   const ordenado = useMemo(() => {
-    // vendido por último, mais recentes primeiro (se existir criadoEm)
     return [...itens].sort((a, b) => {
       const sa = a.status === "Vendido" ? 1 : 0;
       const sb = b.status === "Vendido" ? 1 : 0;
@@ -110,16 +109,15 @@ export default function VendasPage() {
                 <div key={v.id} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-extrabold text-lg">{v.cliente || "-"}</p>
-                      <p className="text-zinc-400 text-sm">
+                      <p className="font-extrabold text-lg">
                         {(v.marca || "-") + " • " + (v.modelo || "-")}
                       </p>
+                      <p className="text-zinc-400 text-sm">Custo: {formatBRL(custo)}</p>
                     </div>
                     <span className={badge(v.status)}>{v.status || "Em estoque"}</span>
                   </div>
 
                   <div className="mt-3 text-sm text-zinc-300 space-y-1">
-                    <p><b>Custo:</b> {formatBRL(custo)}</p>
                     <p><b>Estimado:</b> {typeof v.valorEstimado === "number" ? formatBRL(v.valorEstimado) : "-"}</p>
                     <p><b>Vendido:</b> {typeof v.valorVendido === "number" ? formatBRL(v.valorVendido) : "-"}</p>
                   </div>
