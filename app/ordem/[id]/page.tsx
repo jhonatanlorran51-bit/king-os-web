@@ -13,11 +13,12 @@ import {
   collection,
   serverTimestamp,
 } from "firebase/firestore";
+import { useRole } from "../../../lib/useRole";
 
 type Ordem = {
   cliente?: string;
   modelo?: string;
-  telefone?: string; // opcional: se tiver, manda direto
+  telefone?: string;
   reparos?: string[];
   estado?: string[];
   valorTotal?: number | null;
@@ -73,10 +74,11 @@ export default function OrdemDetalhePage() {
   const params = useParams();
   const id = String(params?.id || "");
 
+  const { role, loading: loadingRole } = useRole();
+
   const [ordem, setOrdem] = useState<Ordem | null>(null);
   const [carregando, setCarregando] = useState(true);
 
-  // buffers locais
   const [antesLocal, setAntesLocal] = useState<string[]>([]);
   const [depoisLocal, setDepoisLocal] = useState<string[]>([]);
   const [salvandoFotos, setSalvandoFotos] = useState(false);
@@ -171,12 +173,11 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  // ✅ WHATSAPP: cria um link público /s/... e envia ao cliente
+  // ✅ só ADMIN pode enviar link ao cliente
   async function enviarPdfWhatsApp() {
     if (!ordem) return;
     setEnviandoWhats(true);
     try {
-      // cria copia publica (só dados do cliente)
       const ref = await addDoc(collection(db, "shares"), {
         lojaNome: "KING OF CELL",
         cliente: ordem.cliente || "",
@@ -209,7 +210,7 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  if (carregando) {
+  if (carregando || loadingRole) {
     return (
       <main className="min-h-screen bg-black text-white p-6">
         <p className="text-zinc-400">Carregando...</p>
@@ -229,51 +230,42 @@ export default function OrdemDetalhePage() {
   const fotosDepois = ordem.fotosDepois || [];
   const concluida = ordem.status === "Concluído";
 
+  const isAdmin = role === "admin";
+  const isTecnico = role === "tecnico";
+
   return (
     <main className="min-h-screen bg-black text-white p-6">
       {/* MENU */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Voltar
-        </button>
-        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Home
-        </Link>
-        <Link href="/ordens" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Nova Ordem
-        </Link>
-        <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Ativas
-        </Link>
-        <Link href="/concluidas" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Concluídas
-        </Link>
-        <Link href="/historico" className="bg-zinc-700 px-4 py-2 rounded font-bold">
-          Histórico
-        </Link>
-        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">
-          Sair
-        </Link>
+        <button onClick={() => router.back()} className="bg-zinc-700 px-4 py-2 rounded font-bold">Voltar</button>
+        <Link href="/" className="bg-zinc-700 px-4 py-2 rounded font-bold">Home</Link>
+
+        {isAdmin && (
+          <>
+            <Link href="/ordens" className="bg-zinc-700 px-4 py-2 rounded font-bold">Nova Ordem</Link>
+            <Link href="/dashboard" className="bg-zinc-700 px-4 py-2 rounded font-bold">Ativas</Link>
+            <Link href="/concluidas" className="bg-zinc-700 px-4 py-2 rounded font-bold">Concluídas</Link>
+            <Link href="/historico" className="bg-zinc-700 px-4 py-2 rounded font-bold">Histórico</Link>
+          </>
+        )}
+
+        <Link href="/logout" className="bg-red-500 text-black px-4 py-2 rounded font-bold">Sair</Link>
       </div>
 
       <h1 className="text-2xl font-bold mb-2">Detalhes da OS</h1>
-      <p className="text-zinc-300 mb-4">
-        <b>{osCurta(id)}</b>
-      </p>
+      <p className="text-zinc-300 mb-4"><b>{osCurta(id)}</b></p>
 
       <div className="bg-zinc-900 p-4 rounded">
-        <p>
-          <b>Cliente:</b> {ordem.cliente || "-"}
-        </p>
-        <p>
-          <b>Modelo:</b> {ordem.modelo || "-"}
-        </p>
-        <p>
-          <b>Status:</b> {ordem.status || "Em análise"}
-        </p>
-        <p>
-          <b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}
-        </p>
+        <p><b>Cliente:</b> {ordem.cliente || "-"}</p>
+        <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
+        <p><b>Status:</b> {ordem.status || "Em análise"}</p>
+
+        {/* ✅ valor só ADMIN */}
+        {isAdmin ? (
+          <p><b>Valor:</b> {typeof ordem.valorTotal === "number" ? formatBRL(ordem.valorTotal) : "-"}</p>
+        ) : (
+          <p className="text-zinc-400 text-sm">Valor: (restrito)</p>
+        )}
 
         {/* FOTOS ANTES */}
         <div className="mt-6">
@@ -281,13 +273,7 @@ export default function OrdemDetalhePage() {
 
           <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
             Selecionar fotos (Antes)
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => addAntes(e.target.files)}
-            />
+            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addAntes(e.target.files)} />
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -297,12 +283,7 @@ export default function OrdemDetalhePage() {
             {antesLocal.map((src, i) => (
               <div key={i} className="relative">
                 <img src={src} alt={`Antes novo ${i + 1}`} className="rounded border border-zinc-700" />
-                <button
-                  onClick={() => removerAntesLocal(i)}
-                  className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
-                >
-                  X
-                </button>
+                <button onClick={() => removerAntesLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
               </div>
             ))}
           </div>
@@ -318,13 +299,7 @@ export default function OrdemDetalhePage() {
             <>
               <label className="inline-block bg-zinc-700 px-4 py-2 rounded font-bold cursor-pointer">
                 Selecionar fotos (Depois)
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => addDepois(e.target.files)}
-                />
+                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addDepois(e.target.files)} />
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -334,12 +309,7 @@ export default function OrdemDetalhePage() {
                 {depoisLocal.map((src, i) => (
                   <div key={i} className="relative">
                     <img src={src} alt={`Depois novo ${i + 1}`} className="rounded border border-zinc-700" />
-                    <button
-                      onClick={() => removerDepoisLocal(i)}
-                      className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold"
-                    >
-                      X
-                    </button>
+                    <button onClick={() => removerDepoisLocal(i)} className="absolute top-2 right-2 bg-red-500 text-black px-2 py-1 rounded font-bold">X</button>
                   </div>
                 ))}
               </div>
@@ -355,36 +325,48 @@ export default function OrdemDetalhePage() {
           {salvandoFotos ? "Salvando..." : "Salvar Fotos"}
         </button>
 
+        {/* BOTÕES */}
         <div className="flex gap-2 mt-6 flex-wrap">
-          <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">
-            Iniciar Reparo
-          </button>
-          <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">
-            Concluir
-          </button>
-          <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">
-            Cancelar
-          </button>
-          <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">
-            Excluir
-          </button>
+          {(isAdmin || isTecnico) && (
+            <>
+              <button onClick={iniciarReparo} className="bg-blue-500 text-black px-4 py-2 rounded font-bold">
+                Iniciar Reparo
+              </button>
+              <button onClick={concluir} className="bg-green-500 text-black px-4 py-2 rounded font-bold">
+                Concluir
+              </button>
+            </>
+          )}
 
-          <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
-            PDF (interno)
-          </Link>
+          {isAdmin && (
+            <>
+              <button onClick={cancelar} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold">
+                Cancelar
+              </button>
+              <button onClick={excluir} className="bg-red-500 text-black px-4 py-2 rounded font-bold">
+                Excluir
+              </button>
 
-          <button
-            onClick={enviarPdfWhatsApp}
-            disabled={enviandoWhats}
-            className="bg-green-600 text-black px-4 py-2 rounded font-bold disabled:opacity-50"
-          >
-            {enviandoWhats ? "Gerando link..." : "Enviar PDF no WhatsApp"}
-          </button>
+              <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded font-bold">
+                PDF (interno)
+              </Link>
+
+              <button
+                onClick={enviarPdfWhatsApp}
+                disabled={enviandoWhats}
+                className="bg-green-600 text-black px-4 py-2 rounded font-bold disabled:opacity-50"
+              >
+                {enviandoWhats ? "Gerando link..." : "Enviar PDF no WhatsApp"}
+              </button>
+            </>
+          )}
         </div>
 
-        <p className="text-zinc-400 text-sm mt-4">
-          Obs: o link enviado ao cliente é público (sem login) e mostra somente o valor final e as fotos.
-        </p>
+        {!isAdmin && (
+          <p className="text-zinc-400 text-sm mt-4">
+            Você está no modo Técnico: valores e envio ao cliente ficam restritos.
+          </p>
+        )}
       </div>
     </main>
   );
