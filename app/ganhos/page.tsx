@@ -15,7 +15,7 @@ function monthKey(d = new Date()) {
   return `${y}-${m}`;
 }
 
-function inMonth(docData: any, inicio: number, fim: number) {
+function getTimeFromDoc(docData: any) {
   const dt =
     docData?.criadoEm?.toDate?.() ||
     docData?.concluidoEm?.toDate?.() ||
@@ -23,8 +23,7 @@ function inMonth(docData: any, inicio: number, fim: number) {
     (docData?.criadoEm instanceof Date ? docData.criadoEm : null) ||
     null;
 
-  const t = dt ? dt.getTime() : null;
-  return typeof t === "number" && t >= inicio && t < fim;
+  return dt ? dt.getTime() : null;
 }
 
 export default function GanhosPage() {
@@ -59,15 +58,19 @@ export default function GanhosPage() {
     const inicio = new Date(yy, mm - 1, 1).getTime();
     const fim = new Date(yy, mm, 1).getTime();
 
-    // ===== OS (somar só Concluído) =====
-    const ordensMes = ordens.filter((o) => inMonth(o, inicio, fim));
-    const concluidas = ordensMes.filter((o) => o.status === "Concluído");
+    const inMonth = (o: any) => {
+      const t = getTimeFromDoc(o);
+      return typeof t === "number" && t >= inicio && t < fim;
+    };
+
+    // ========= OS (somar só Concluído) =========
+    const concluidas = ordens.filter((o) => inMonth(o) && o.status === "Concluído");
 
     const faturamentoOS = concluidas.reduce(
       (acc, o) => acc + (typeof o.valorTotal === "number" ? o.valorTotal : 0),
       0
     );
-    const custosOS = concluidas.reduce(
+    const custoOS = concluidas.reduce(
       (acc, o) => acc + (typeof o.valorPeca === "number" ? o.valorPeca : 0),
       0
     );
@@ -76,39 +79,63 @@ export default function GanhosPage() {
       0
     );
 
-    // ===== VENDAS (somar só Vendido) =====
-    const vendasMes = vendas.filter((v) => inMonth(v, inicio, fim));
-    const vendidas = vendasMes.filter((v) => v.status === "Vendido"); // ✅ Cancelado NÃO entra
+    // ========= VENDAS =========
+    // ✅ custo já existe no momento que você cadastrou o aparelho
+    // então vamos usar o criadoEm do item de venda como “momento do custo”
+    const vendasNoMes = vendas.filter((v) => {
+      const dt = v?.criadoEm?.toDate?.();
+      const t = dt ? dt.getTime() : null;
+      return typeof t === "number" && t >= inicio && t < fim;
+    });
 
+    const custoVenda = (v: any) => {
+      const a = typeof v.valorAparelho === "number" ? v.valorAparelho : 0;
+      const p = typeof v.valorPecas === "number" ? v.valorPecas : 0;
+      return a + p;
+    };
+
+    // ✅ ESTOQUE (Disponível) => entra como “investido”
+    const estoque = vendasNoMes.filter((v) => (v.status || "Em estoque") === "Em estoque");
+    const investidoEstoque = estoque.reduce((acc, v) => acc + custoVenda(v), 0);
+
+    // ✅ VENDIDAS => entra em faturamento/lucro e também tem custo associado
+    const vendidas = vendas.filter((v) => inMonth(v) && v.status === "Vendido");
     const faturamentoVendas = vendidas.reduce(
       (acc, v) => acc + (typeof v.valorVendido === "number" ? v.valorVendido : 0),
       0
     );
-
-    const custosVendas = vendidas.reduce((acc, v) => {
-      const a = typeof v.valorAparelho === "number" ? v.valorAparelho : 0;
-      const p = typeof v.valorPecas === "number" ? v.valorPecas : 0;
-      return acc + a + p;
-    }, 0);
-
+    const custoVendasVendidas = vendidas.reduce((acc, v) => acc + custoVenda(v), 0);
     const lucroVendas = vendidas.reduce(
       (acc, v) => acc + (typeof v.lucro === "number" ? v.lucro : 0),
       0
     );
 
+    // ========= TOTAIS =========
+    // Custos do mês (o que virou serviço/venda)
+    const custosOperacionais = custoOS + custoVendasVendidas;
+
+    // Custos totais (inclui investido no estoque)
+    const custosTotais = custosOperacionais + investidoEstoque;
+
+    const faturamentoTotal = faturamentoOS + faturamentoVendas;
+    const lucroTotal = lucroOS + lucroVendas;
+
     return {
-      totalOS: concluidas.length,
-      totalVendas: vendidas.length,
-
-      faturamento: faturamentoOS + faturamentoVendas,
-      custos: custosOS + custosVendas,
-      lucro: lucroOS + lucroVendas,
-
+      contagem: {
+        osConcluidas: concluidas.length,
+        vendasVendidas: vendidas.length,
+        estoque: estoque.length,
+      },
+      faturamentoTotal,
+      custosOperacionais,
+      investidoEstoque,
+      custosTotais,
+      lucroTotal,
       detalhes: {
         faturamentoOS,
         faturamentoVendas,
-        custosOS,
-        custosVendas,
+        custoOS,
+        custoVendasVendidas,
         lucroOS,
         lucroVendas,
       },
@@ -135,7 +162,7 @@ export default function GanhosPage() {
             <div>
               <p className="text-xl font-extrabold">Resumo do mês</p>
               <p className="text-zinc-400 text-sm">
-                Só entra: OS <b>Concluídas</b> e Vendas <b>Vendidas</b>
+                Lucro só entra quando vender/concluir. Investimento em estoque aparece na hora.
               </p>
             </div>
 
@@ -154,34 +181,35 @@ export default function GanhosPage() {
             <p className="text-zinc-400 mt-4">Carregando...</p>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-5">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                   <p className="text-zinc-400 text-sm">Faturamento</p>
-                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.faturamento)}</p>
+                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.faturamentoTotal)}</p>
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-400 text-sm">Custos</p>
-                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.custos)}</p>
+                  <p className="text-zinc-400 text-sm">Custos (serviços/vendas)</p>
+                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.custosOperacionais)}</p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-400 text-sm">Investido em estoque</p>
+                  <p className="text-2xl font-extrabold mt-1">{formatBRL(resumo.investidoEstoque)}</p>
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
                   <p className="text-zinc-400 text-sm">Lucro</p>
-                  <p className="text-2xl font-extrabold mt-1 text-green-400">{formatBRL(resumo.lucro)}</p>
+                  <p className="text-2xl font-extrabold mt-1 text-green-400">{formatBRL(resumo.lucroTotal)}</p>
                 </div>
               </div>
 
               <div className="mt-4 text-xs text-zinc-500 space-y-1">
                 <p>
-                  OS concluídas: <b>{resumo.totalOS}</b> | Vendas vendidas: <b>{resumo.totalVendas}</b>
+                  OS concluídas: <b>{resumo.contagem.osConcluidas}</b> | Vendas vendidas:{" "}
+                  <b>{resumo.contagem.vendasVendidas}</b> | Em estoque: <b>{resumo.contagem.estoque}</b>
                 </p>
                 <p>
-                  Detalhe: Faturamento OS {formatBRL(resumo.detalhes.faturamentoOS)} + Vendas{" "}
-                  {formatBRL(resumo.detalhes.faturamentoVendas)}
-                </p>
-                <p>
-                  Detalhe: Custos OS {formatBRL(resumo.detalhes.custosOS)} + Vendas{" "}
-                  {formatBRL(resumo.detalhes.custosVendas)}
+                  Total de custos (inclui estoque): <b>{formatBRL(resumo.custosTotais)}</b>
                 </p>
               </div>
             </>
