@@ -113,7 +113,8 @@ export default function SharePdfPage() {
 
           {/* Dados */}
           <p><b>Cliente:</b> {data.cliente || "-"}</p>
-          <p><b>Modelo:</b> {data.modelo || "-"}</p>
+          <p><b>Marca:</b> {ordem.marca || "-"}</p>
+          <p><b>Modelo:</b> {ordem.modelo || "-"}</p>
           <p><b>Status:</b> {data.status || "-"}</p>
 
           <p className="mt-2">
