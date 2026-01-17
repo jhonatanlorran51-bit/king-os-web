@@ -27,32 +27,28 @@ function osCurta(id: string) {
 function safeStr(v: any) {
   return typeof v === "string" ? v : "";
 }
-
 function safeArr(v: any) {
   return Array.isArray(v) ? v : [];
 }
-
 function safeNum(v: any) {
   return typeof v === "number" && isFinite(v) ? v : null;
 }
-
 function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
-
 function normalizarTelefoneBR(telefone?: string) {
   const t = (telefone || "").replace(/\D/g, "");
   if (!t) return "";
   return t.startsWith("55") ? t : `55${t}`;
 }
 
-/* ================== IMAGEM (compressão) ================== */
+/* ===== imagem (compressão) ===== */
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
 }
 
@@ -88,7 +84,7 @@ export default function OrdemDetalhePage() {
 
   const [ordem, setOrdem] = useState<Ordem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string>("");
+  const [msg, setMsg] = useState("");
 
   const [antesLocal, setAntesLocal] = useState<string[]>([]);
   const [depoisLocal, setDepoisLocal] = useState<string[]>([]);
@@ -99,15 +95,13 @@ export default function OrdemDetalhePage() {
     setLoading(true);
     setMsg("");
     try {
-      const ref = doc(db, "ordens", id);
-      const snap = await getDoc(ref);
-
+      const snap = await getDoc(doc(db, "ordens", id));
       if (!snap.exists()) {
         setOrdem(null);
-        setMsg("OS não encontrada (documento não existe).");
+        setMsg("OS não encontrada.");
       } else {
         const d: any = snap.data();
-        const o: Ordem = {
+        setOrdem({
           cliente: safeStr(d.cliente),
           telefone: safeStr(d.telefone),
           marca: safeStr(d.marca),
@@ -118,13 +112,12 @@ export default function OrdemDetalhePage() {
           status: safeStr(d.status) || "Em análise",
           fotosAntes: safeArr(d.fotosAntes),
           fotosDepois: safeArr(d.fotosDepois),
-        };
-        setOrdem(o);
+        });
       }
     } catch (e: any) {
-      console.error("ERRO /ordem/[id] getDoc:", e);
+      console.error(e);
       setOrdem(null);
-      setMsg("Erro ao abrir esta OS: " + (e?.message || String(e) || "desconhecido"));
+      setMsg("Erro ao abrir OS: " + (e?.message || String(e)));
     } finally {
       setLoading(false);
     }
@@ -133,7 +126,7 @@ export default function OrdemDetalhePage() {
   useEffect(() => {
     if (!id) {
       setLoading(false);
-      setMsg("ID da OS inválido.");
+      setMsg("ID inválido.");
       return;
     }
     carregar();
@@ -152,7 +145,7 @@ export default function OrdemDetalhePage() {
       await updateDoc(doc(db, "ordens", id), { status: novo, atualizadoEm: new Date() });
       await carregar();
     } catch (e: any) {
-      console.error("ERRO updateDoc status:", e);
+      console.error(e);
       setMsg("Erro ao atualizar status: " + (e?.message || String(e)));
     }
   }
@@ -162,7 +155,6 @@ export default function OrdemDetalhePage() {
       if (!files) return;
       const livres = Math.max(0, 3 - fotosAntes.length - antesLocal.length);
       if (livres <= 0) return setMsg("Limite de 3 fotos (Antes).");
-
       const toTake = Array.from(files).slice(0, livres);
       const novas: string[] = [];
       for (const f of toTake) novas.push(await compressImage(f, 720, 0.55));
@@ -178,7 +170,6 @@ export default function OrdemDetalhePage() {
       if (!files) return;
       const livres = Math.max(0, 2 - fotosDepois.length - depoisLocal.length);
       if (livres <= 0) return setMsg("Limite de 2 fotos (Depois).");
-
       const toTake = Array.from(files).slice(0, livres);
       const novas: string[] = [];
       for (const f of toTake) novas.push(await compressImage(f, 720, 0.55));
@@ -203,24 +194,21 @@ export default function OrdemDetalhePage() {
       await carregar();
       setMsg("Fotos salvas com sucesso.");
     } catch (e: any) {
-      console.error("ERRO salvarFotos:", e);
+      console.error(e);
       setMsg("Erro ao salvar fotos: " + (e?.message || String(e)));
     } finally {
       setSaving(false);
     }
   }
 
-  // ✅ FIX POPUP BLOCK: abre janela ANTES do await
+  // ✅ WHATS 100%: sem popup, abre direto no navegador (não bloqueia)
   async function enviarWhats() {
     if (!ordem) return;
-
     setSending(true);
     setMsg("");
 
-    // abre uma aba/janela agora (gesto do clique), para não bloquear
-    const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
-
     try {
+      // cria o share publico
       const ref = await addDoc(collection(db, "shares"), {
         lojaNome: "KING OF CELL",
         cliente: ordem.cliente || "",
@@ -238,26 +226,18 @@ export default function OrdemDetalhePage() {
 
       const link = `${window.location.origin}/s/${ref.id}`;
       const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
-      const texto = `Olá${nome}! Segue o PDF da sua OS ${osCurta(id)}:\n\n${link}`;
+      const texto = `Olá${nome}! Segue o comprovante/OS ${osCurta(id)}:\n\n${link}`;
 
       const tel = normalizarTelefoneBR(ordem.telefone);
       const waUrl = tel
         ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
         : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
-      // redireciona a janela que já foi aberta
-      if (popup) popup.location.href = waUrl;
-      else window.location.href = waUrl; // fallback
+      // ✅ abre SEM BLOQUEIO
+      window.location.href = waUrl;
     } catch (e: any) {
       console.error("ERRO enviarWhats:", e);
-
-      if (popup) popup.close(); // fecha se deu erro
-
-      setMsg(
-        "Erro ao gerar link/Whats: " +
-          (e?.code ? `${e.code} - ` : "") +
-          (e?.message || String(e))
-      );
+      setMsg(`Erro ao gerar link público: ${e?.code || ""} ${e?.message || String(e)}`);
     } finally {
       setSending(false);
     }
@@ -266,10 +246,7 @@ export default function OrdemDetalhePage() {
   return (
     <main className="min-h-screen bg-black text-white p-5">
       <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => router.back()}
-          className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold"
-        >
+        <button onClick={() => router.back()} className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold">
           Voltar
         </button>
         <span className="text-zinc-400 text-sm">{osCurta(id)}</span>
@@ -287,14 +264,9 @@ export default function OrdemDetalhePage() {
       {!loading && !ordem && (
         <div className="bg-zinc-950 border border-red-700 rounded-2xl p-5">
           <p className="text-red-400 font-bold mb-2">Não foi possível abrir a OS</p>
-          <p className="text-zinc-300 text-sm">Use “Tentar de novo”.</p>
           <div className="mt-4 flex gap-2 flex-wrap">
-            <button onClick={carregar} className="bg-zinc-800 px-4 py-2 rounded-xl font-bold">
-              Tentar de novo
-            </button>
-            <Link href="/dashboard" className="bg-white text-black px-4 py-2 rounded-xl font-bold">
-              Voltar para Ativas
-            </Link>
+            <button onClick={carregar} className="bg-zinc-800 px-4 py-2 rounded-xl font-bold">Tentar de novo</button>
+            <Link href="/dashboard" className="bg-white text-black px-4 py-2 rounded-xl font-bold">Voltar para Ativas</Link>
           </div>
         </div>
       )}
@@ -304,9 +276,7 @@ export default function OrdemDetalhePage() {
           <p className="text-xl font-extrabold">{ordem.cliente || "-"}</p>
           <p className="text-zinc-400">{(ordem.marca || "-") + " • " + (ordem.modelo || "-")}</p>
 
-          <p className="mt-3">
-            <b>Status:</b> {status}
-          </p>
+          <p className="mt-3"><b>Status:</b> {status}</p>
 
           <p className="mt-1">
             <b>Valor:</b>{" "}
@@ -326,11 +296,6 @@ export default function OrdemDetalhePage() {
                 Concluir
               </button>
             )}
-            {!concluida && (
-              <button onClick={() => setStatus("Cancelado")} className="bg-yellow-500 text-black px-4 py-2 rounded-xl font-bold">
-                Cancelar
-              </button>
-            )}
 
             {concluida && (
               <>
@@ -339,10 +304,10 @@ export default function OrdemDetalhePage() {
                   disabled={sending}
                   className="bg-green-600 text-black px-4 py-2 rounded-xl font-bold disabled:opacity-50"
                 >
-                  {sending ? "Gerando..." : "Enviar Whats (PDF)"}
+                  {sending ? "Gerando..." : "Enviar no Whats (Cliente)"}
                 </button>
                 <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded-xl font-bold">
-                  PDF
+                  PDF (interno)
                 </Link>
               </>
             )}
@@ -357,12 +322,8 @@ export default function OrdemDetalhePage() {
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-            {fotosAntes.map((src: string, i: number) => (
-              <img key={i} src={src} className="rounded-xl border border-zinc-800" />
-            ))}
-            {antesLocal.map((src, i) => (
-              <img key={`a${i}`} src={src} className="rounded-xl border border-zinc-800" />
-            ))}
+            {fotosAntes.map((src: string, i: number) => <img key={i} src={src} className="rounded-xl border border-zinc-800" />)}
+            {antesLocal.map((src, i) => <img key={`a${i}`} src={src} className="rounded-xl border border-zinc-800" />)}
           </div>
 
           {concluida && (
@@ -374,12 +335,8 @@ export default function OrdemDetalhePage() {
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                {fotosDepois.map((src: string, i: number) => (
-                  <img key={i} src={src} className="rounded-xl border border-zinc-800" />
-                ))}
-                {depoisLocal.map((src, i) => (
-                  <img key={`d${i}`} src={src} className="rounded-xl border border-zinc-800" />
-                ))}
+                {fotosDepois.map((src: string, i: number) => <img key={i} src={src} className="rounded-xl border border-zinc-800" />)}
+                {depoisLocal.map((src, i) => <img key={`d${i}`} src={src} className="rounded-xl border border-zinc-800" />)}
               </div>
             </>
           )}
