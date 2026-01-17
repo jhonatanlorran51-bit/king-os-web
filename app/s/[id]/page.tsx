@@ -1,5 +1,3 @@
-import PrintButton from "./PrintButton";
-
 export const dynamic = "force-dynamic";
 
 function formatBRL(v: number) {
@@ -9,16 +7,14 @@ function formatBRL(v: number) {
 function toArr(v: any): string[] {
   return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 }
-
 function toStr(v: any): string {
   return typeof v === "string" ? v : "";
 }
-
 function toNum(v: any): number | null {
   return typeof v === "number" && isFinite(v) ? v : null;
 }
 
-// Firestore REST helpers
+// Firestore REST convert
 function fsValueToJs(v: any): any {
   if (!v) return null;
   if (v.stringValue !== undefined) return v.stringValue;
@@ -45,27 +41,24 @@ async function getShareDoc(id: string) {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
   if (!projectId || !apiKey) {
-    return { ok: false, error: "Config do Firebase ausente no Vercel (env vars)." };
+    return { ok: false, error: "Faltam env vars do Firebase no Vercel." };
   }
 
-  // Document endpoint
   const url =
     `https://firestore.googleapis.com/v1/projects/${projectId}` +
     `/databases/(default)/documents/shares/${id}` +
     `?key=${apiKey}`;
 
   const res = await fetch(url, { cache: "no-store" });
-
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    return { ok: false, error: `Firestore REST: ${res.status} ${res.statusText} ${txt}` };
+    return { ok: false, error: `Firestore: ${res.status} ${res.statusText} ${txt}` };
   }
 
   const json = await res.json();
   const fields = json.fields || {};
   const data: any = {};
   for (const k of Object.keys(fields)) data[k] = fsValueToJs(fields[k]);
-
   return { ok: true, data };
 }
 
@@ -77,7 +70,7 @@ export default async function SharePage({ params }: { params: { id: string } }) 
       <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
         <div className="max-w-xl w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
           <p className="text-red-400 font-bold">Link inválido</p>
-          <p className="text-zinc-300 mt-2">ID vazio.</p>
+          <p className="text-zinc-300 mt-2">Sem ID.</p>
         </div>
       </main>
     );
@@ -112,20 +105,24 @@ export default async function SharePage({ params }: { params: { id: string } }) 
 
   return (
     <main className="min-h-screen bg-black text-white p-4 sm:p-8">
-      <div id="printArea" className="max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+      <div className="max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
         <div className="flex items-center justify-between gap-4 mb-4">
           <div>
             <p className="text-2xl font-extrabold">{lojaNome}</p>
             <p className="text-zinc-400 text-sm">Comprovante / Ordem de Serviço</p>
           </div>
 
-          <PrintButton />
+          <button
+            onClick={() => (globalThis as any).print?.()}
+            className="bg-white text-black px-4 py-2 rounded-xl font-extrabold"
+          >
+            Imprimir / Salvar PDF
+          </button>
         </div>
 
         <div className="border-t border-zinc-800 pt-4 space-y-2">
           <p><b>Cliente:</b> {cliente}</p>
           <p><b>Aparelho:</b> {marca} • {modelo}</p>
-
           <p>
             <b>Valor Final:</b>{" "}
             <span className="text-green-400 font-extrabold">
@@ -151,22 +148,18 @@ export default async function SharePage({ params }: { params: { id: string } }) 
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Antes)</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {fotosAntes.length
-              ? fotosAntes.map((src, i) => (
-                  <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded-xl border border-zinc-800" />
-                ))
-              : <p className="text-zinc-400">Nenhuma foto.</p>}
+            {fotosAntes.length ? fotosAntes.map((src, i) => (
+              <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded-xl border border-zinc-800" />
+            )) : <p className="text-zinc-400">Nenhuma foto.</p>}
           </div>
         </div>
 
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Depois)</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {fotosDepois.length
-              ? fotosDepois.map((src, i) => (
-                  <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded-xl border border-zinc-800" />
-                ))
-              : <p className="text-zinc-400">Nenhuma foto.</p>}
+            {fotosDepois.length ? fotosDepois.map((src, i) => (
+              <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded-xl border border-zinc-800" />
+            )) : <p className="text-zinc-400">Nenhuma foto.</p>}
           </div>
         </div>
       </div>
@@ -175,14 +168,6 @@ export default async function SharePage({ params }: { params: { id: string } }) 
         @media print {
           body { background: #000 !important; }
           button { display: none !important; }
-          #printArea {
-            border: none !important;
-            background: #000 !important;
-            color: #fff !important;
-            margin: 0 !important;
-            width: 100% !important;
-          }
-          img { max-width: 100% !important; }
         }
       `}</style>
     </main>
