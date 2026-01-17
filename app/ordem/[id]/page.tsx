@@ -201,15 +201,14 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  // ✅ WHATS 100%: sem popup, abre direto no navegador (não bloqueia)
+  // ✅ WHATS melhorado: link em linha separada + abre sem popup + manda pro telefone da OS
   async function enviarWhats() {
     if (!ordem) return;
     setSending(true);
     setMsg("");
 
     try {
-      // cria o share publico
-      const ref = await addDoc(collection(db, "shares"), {
+      const shareRef = await addDoc(collection(db, "shares"), {
         lojaNome: "KING OF CELL",
         cliente: ordem.cliente || "",
         telefone: ordem.telefone || "",
@@ -222,18 +221,25 @@ export default function OrdemDetalhePage() {
         fotosDepois,
         criadoEm: serverTimestamp(),
         osId: id,
+        origem: "ordem",
       });
 
-      const link = `${window.location.origin}/s/${ref.id}`;
+      const link = `${window.location.origin}/s/${shareRef.id}`;
       const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
-      const texto = `Olá${nome}! Segue o comprovante/OS ${osCurta(id)}:\n\n${link}`;
+
+      // 🔥 link sozinho numa linha (Whats não corta)
+      const texto =
+        `Olá${nome}!\n` +
+        `Segue o comprovante/OS ${osCurta(id)}:\n\n` +
+        `${link}\n\n` +
+        `Se não abrir, copie e cole no navegador.`;
 
       const tel = normalizarTelefoneBR(ordem.telefone);
       const waUrl = tel
         ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
         : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
-      // ✅ abre SEM BLOQUEIO
+      // ✅ abre sem bloqueio de popup
       window.location.href = waUrl;
     } catch (e: any) {
       console.error("ERRO enviarWhats:", e);
@@ -246,7 +252,10 @@ export default function OrdemDetalhePage() {
   return (
     <main className="min-h-screen bg-black text-white p-5">
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => router.back()} className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold">
+        <button
+          onClick={() => router.back()}
+          className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold"
+        >
           Voltar
         </button>
         <span className="text-zinc-400 text-sm">{osCurta(id)}</span>
@@ -265,8 +274,12 @@ export default function OrdemDetalhePage() {
         <div className="bg-zinc-950 border border-red-700 rounded-2xl p-5">
           <p className="text-red-400 font-bold mb-2">Não foi possível abrir a OS</p>
           <div className="mt-4 flex gap-2 flex-wrap">
-            <button onClick={carregar} className="bg-zinc-800 px-4 py-2 rounded-xl font-bold">Tentar de novo</button>
-            <Link href="/dashboard" className="bg-white text-black px-4 py-2 rounded-xl font-bold">Voltar para Ativas</Link>
+            <button onClick={carregar} className="bg-zinc-800 px-4 py-2 rounded-xl font-bold">
+              Tentar de novo
+            </button>
+            <Link href="/dashboard" className="bg-white text-black px-4 py-2 rounded-xl font-bold">
+              Voltar para Ativas
+            </Link>
           </div>
         </div>
       )}
@@ -276,7 +289,9 @@ export default function OrdemDetalhePage() {
           <p className="text-xl font-extrabold">{ordem.cliente || "-"}</p>
           <p className="text-zinc-400">{(ordem.marca || "-") + " • " + (ordem.modelo || "-")}</p>
 
-          <p className="mt-3"><b>Status:</b> {status}</p>
+          <p className="mt-3">
+            <b>Status:</b> {status}
+          </p>
 
           <p className="mt-1">
             <b>Valor:</b>{" "}
@@ -287,12 +302,19 @@ export default function OrdemDetalhePage() {
 
           <div className="mt-4 flex gap-2 flex-wrap">
             {status === "Em análise" && (
-              <button onClick={() => setStatus("Em reparo")} className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold">
+              <button
+                onClick={() => setStatus("Em reparo")}
+                className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold"
+              >
                 Iniciar reparo
               </button>
             )}
+
             {emReparo && (
-              <button onClick={() => setStatus("Concluído")} className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold">
+              <button
+                onClick={() => setStatus("Concluído")}
+                className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold"
+              >
                 Concluir
               </button>
             )}
@@ -306,6 +328,7 @@ export default function OrdemDetalhePage() {
                 >
                   {sending ? "Gerando..." : "Enviar no Whats (Cliente)"}
                 </button>
+
                 <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded-xl font-bold">
                   PDF (interno)
                 </Link>
@@ -322,8 +345,12 @@ export default function OrdemDetalhePage() {
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-            {fotosAntes.map((src: string, i: number) => <img key={i} src={src} className="rounded-xl border border-zinc-800" />)}
-            {antesLocal.map((src, i) => <img key={`a${i}`} src={src} className="rounded-xl border border-zinc-800" />)}
+            {fotosAntes.map((src: string, i: number) => (
+              <img key={i} src={src} className="rounded-xl border border-zinc-800" />
+            ))}
+            {antesLocal.map((src, i) => (
+              <img key={`a${i}`} src={src} className="rounded-xl border border-zinc-800" />
+            ))}
           </div>
 
           {concluida && (
@@ -335,8 +362,12 @@ export default function OrdemDetalhePage() {
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                {fotosDepois.map((src: string, i: number) => <img key={i} src={src} className="rounded-xl border border-zinc-800" />)}
-                {depoisLocal.map((src, i) => <img key={`d${i}`} src={src} className="rounded-xl border border-zinc-800" />)}
+                {fotosDepois.map((src: string, i: number) => (
+                  <img key={i} src={src} className="rounded-xl border border-zinc-800" />
+                ))}
+                {depoisLocal.map((src, i) => (
+                  <img key={`d${i}`} src={src} className="rounded-xl border border-zinc-800" />
+                ))}
               </div>
             </>
           )}
