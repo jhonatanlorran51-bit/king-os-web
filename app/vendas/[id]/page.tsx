@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
-import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  collection,
+  serverTimestamp,
+} from "firebase/firestore";
 
 function toNum(v: string) {
   const n = Number(v.replace(",", "."));
@@ -24,6 +32,8 @@ export default function VendaDetalhePage() {
   const [valorVendido, setValorVendido] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
+
+  const [enviandoPdf, setEnviandoPdf] = useState(false);
 
   async function carregar() {
     setLoading(true);
@@ -89,7 +99,7 @@ export default function VendaDetalhePage() {
     }
   }
 
-  // ✅ Só existe quando já estava vendido e cliente desistiu => volta a "Em estoque" (Disponível)
+  // ✅ Só aparece quando já está vendido
   async function cancelarVenda() {
     const ok = confirm("Cancelar a venda? Vai voltar para DISPONÍVEL (Em estoque).");
     if (!ok) return;
@@ -102,7 +112,7 @@ export default function VendaDetalhePage() {
         valorVendido: null,
         vendidoEm: null,
         lucro: null,
-        canceladoEm: new Date(), // só histórico interno
+        canceladoEm: new Date(),
       });
       await carregar();
       setMsg("Venda cancelada. Aparelho voltou para DISPONÍVEL.");
@@ -132,6 +142,60 @@ export default function VendaDetalhePage() {
     }
   }
 
+  // ✅ GERA COMPROVANTE PÚBLICO e abre WhatsApp com link
+  async function enviarComprovanteWhatsApp() {
+    if (!item) return;
+
+    // Só faz sentido se estiver vendido
+    if ((item.status || "Em estoque") !== "Vendido") {
+      alert("Marque como VENDIDO antes de enviar comprovante.");
+      return;
+    }
+
+    setEnviandoPdf(true);
+    setMsg("");
+    try {
+      const ref = await addDoc(collection(db, "shares_vendas"), {
+        lojaNome: "KING OF CELL",
+        marca: item.marca || "",
+        modelo: item.modelo || "",
+        valorEstimado: typeof item.valorEstimado === "number" ? item.valorEstimado : null,
+        valorVendido: typeof item.valorVendido === "number" ? item.valorVendido : null,
+        vendidoEm: item.vendidoEm || serverTimestamp(),
+        criadoEm: serverTimestamp(),
+      });
+
+      const linkPublico = `${window.location.origin}/vs/${ref.id}`;
+
+      const msg = `Olá! Segue o comprovante de venda (PDF):\n\n${linkPublico}`;
+
+      // Se você ainda não salva telefone do comprador, abre WhatsApp genérico:
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gerar comprovante. Verifique as Rules do Firestore (shares_vendas).");
+    } finally {
+      setEnviandoPdf(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white p-6">
+        <p className="text-zinc-400">Carregando...</p>
+      </main>
+    );
+  }
+
+  if (!item) {
+    return (
+      <main className="min-h-screen bg-black text-white p-6">
+        <p className="text-red-400">{msg || "Venda não encontrada."}</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
       <header className="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800">
@@ -147,96 +211,104 @@ export default function VendaDetalhePage() {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-6">
-        {loading && <p className="text-zinc-400">Carregando...</p>}
-
-        {!loading && msg && (
+        {msg && (
           <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 mb-4">
             <p className="text-zinc-300 text-sm break-words">{msg}</p>
           </div>
         )}
 
-        {!loading && item && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
-            <p className="text-xl font-extrabold">
-              {(item.marca || "-") + " • " + (item.modelo || "-")}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+          <p className="text-xl font-extrabold">
+            {(item.marca || "-") + " • " + (item.modelo || "-")}
+          </p>
+
+          <div className="mt-4 text-sm text-zinc-300 space-y-1">
+            <p>
+              <b>Status:</b>{" "}
+              {isVendido ? (
+                <span className="text-green-400 font-bold">Vendido</span>
+              ) : (
+                <span className="text-blue-400 font-bold">Disponível</span>
+              )}
             </p>
 
-            <div className="mt-4 text-sm text-zinc-300 space-y-1">
-              <p>
-                <b>Status:</b>{" "}
-                {isVendido ? (
-                  <span className="text-green-400 font-bold">Vendido</span>
-                ) : (
-                  <span className="text-blue-400 font-bold">Disponível</span>
-                )}
-              </p>
-              <p><b>Pago no aparelho:</b> {typeof item.valorAparelho === "number" ? formatBRL(item.valorAparelho) : "-"}</p>
-              <p><b>Pago nas peças:</b> {typeof item.valorPecas === "number" ? formatBRL(item.valorPecas) : "-"}</p>
-              <p><b>Custo total:</b> {formatBRL(custo)}</p>
-              <p><b>Estimado:</b> {typeof item.valorEstimado === "number" ? formatBRL(item.valorEstimado) : "-"}</p>
-              <p><b>Vendido:</b> {typeof item.valorVendido === "number" ? formatBRL(item.valorVendido) : "-"}</p>
-            </div>
+            <p><b>Estimado:</b> {typeof item.valorEstimado === "number" ? formatBRL(item.valorEstimado) : "-"}</p>
+            <p><b>Vendido:</b> {typeof item.valorVendido === "number" ? formatBRL(item.valorVendido) : "-"}</p>
 
-            <hr className="border-zinc-800 my-5" />
+            {/* (interno) custo aparece só pra você */}
+            <p className="text-zinc-500 text-xs mt-2">
+              (interno) Custo total: {formatBRL(custo)}
+            </p>
+          </div>
 
-            <p className="font-bold mb-2">Valor real vendido</p>
-            <input
-              className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700"
-              placeholder="Valor real vendido"
-              value={valorVendido}
-              onChange={(e) => setValorVendido(e.target.value)}
+          <hr className="border-zinc-800 my-5" />
+
+          <p className="font-bold mb-2">Valor real vendido</p>
+          <input
+            className="w-full p-3 rounded-xl bg-zinc-900 border border-zinc-700"
+            placeholder="Valor real vendido"
+            value={valorVendido}
+            onChange={(e) => setValorVendido(e.target.value)}
+            disabled={salvando}
+          />
+
+          {lucroVenda !== null && (
+            <p className="mt-2 text-sm text-zinc-300">
+              Lucro (se vender por esse valor):{" "}
+              <b className={lucroVenda >= 0 ? "text-green-400" : "text-red-400"}>
+                {formatBRL(lucroVenda)}
+              </b>
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={marcarComoVendido}
               disabled={salvando}
-            />
+              className="bg-green-600 hover:bg-green-500 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : "Marcar como Vendido"}
+            </button>
 
-            {lucroVenda !== null && (
-              <p className="mt-2 text-sm text-zinc-300">
-                Lucro (se vender por esse valor):{" "}
-                <b className={lucroVenda >= 0 ? "text-green-400" : "text-red-400"}>
-                  {formatBRL(lucroVenda)}
-                </b>
-              </p>
+            {/* ✅ só aparece quando já está vendido */}
+            {isVendido && (
+              <button
+                onClick={cancelarVenda}
+                disabled={salvando}
+                className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+              >
+                Cancelar venda
+              </button>
             )}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={excluirVenda}
+              disabled={salvando}
+              className="bg-red-500 hover:bg-red-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+            >
+              Excluir
+            </button>
+
+            {/* ✅ PDF pro cliente (somente vendido) */}
+            {isVendido && (
               <button
-                onClick={marcarComoVendido}
-                disabled={salvando}
-                className="bg-green-600 hover:bg-green-500 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
+                onClick={enviarComprovanteWhatsApp}
+                disabled={enviandoPdf}
+                className="bg-white hover:bg-zinc-200 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
               >
-                {salvando ? "Salvando..." : "Marcar como Vendido"}
+                {enviandoPdf ? "Gerando..." : "Enviar comprovante (PDF) no WhatsApp"}
               </button>
-
-              {/* ✅ SOMENTE QUANDO JÁ ESTÁ VENDIDO */}
-              {isVendido && (
-                <button
-                  onClick={cancelarVenda}
-                  disabled={salvando}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
-                >
-                  Cancelar venda
-                </button>
-              )}
-
-              {/* ✅ SEMPRE PODE EXCLUIR */}
-              <button
-                onClick={excluirVenda}
-                disabled={salvando}
-                className="bg-red-500 hover:bg-red-400 text-black px-6 py-3 rounded-2xl font-extrabold disabled:opacity-50"
-              >
-                Excluir
-              </button>
-            </div>
-
-            {!isVendido && (
-              <p className="text-zinc-500 text-xs mt-4">
-                Em <b>Disponível</b>, não existe “Cancelar venda” (porque ainda não foi vendido).
-              </p>
             )}
           </div>
-        )}
+
+          <p className="text-zinc-500 text-xs mt-4">
+            O comprovante público mostra só: marca/modelo + valor original + valor vendido.
+          </p>
+        </div>
       </div>
     </main>
   );
 }
+
 
 
