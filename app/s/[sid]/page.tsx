@@ -1,139 +1,179 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-type ShareDoc = {
+type ShareOS = {
+  lojaNome?: string;
   cliente?: string;
-  telefone?: string;
   marca?: string;
   modelo?: string;
   reparos?: string[];
   estado?: string[];
-  valorTotal?: number | null; // cliente vê
-  status?: string;
+  valorTotal?: number | null;
   fotosAntes?: string[];
   fotosDepois?: string[];
 };
 
+function safeStr(v: any) {
+  return typeof v === "string" ? v : "";
+}
+function safeArr(v: any) {
+  return Array.isArray(v) ? v : [];
+}
+function safeNum(v: any) {
+  return typeof v === "number" && isFinite(v) ? v : null;
+}
 function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
 
-export default function SharePdfPage() {
+export default function SharePage() {
   const params = useParams();
-  const id = String(params?.id || "");
+  const id = String((params as any)?.id || "");
 
-  const [data, setData] = useState<ShareDoc | null>(null);
-  const [carregando, setCarregando] = useState(true);
+  const [data, setData] = useState<ShareOS | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
-    async function carregar() {
-      setCarregando(true);
-      const snap = await getDoc(doc(db, "shares", id));
-      setData(snap.exists() ? (snap.data() as any) : null);
-      setCarregando(false);
+    if (!id) {
+      setLoading(false);
+      setErr("Link inválido.");
+      return;
     }
-    if (id) carregar();
+
+    (async () => {
+      setLoading(true);
+      setErr("");
+      try {
+        const snap = await getDoc(doc(db, "shares", id));
+        if (!snap.exists()) {
+          setData(null);
+          setErr("Comprovante não encontrado (link inválido ou expirado).");
+        } else {
+          const d: any = snap.data();
+          setData({
+            lojaNome: safeStr(d.lojaNome) || "KING OF CELL",
+            cliente: safeStr(d.cliente),
+            marca: safeStr(d.marca),
+            modelo: safeStr(d.modelo),
+            reparos: safeArr(d.reparos),
+            estado: safeArr(d.estado),
+            valorTotal: safeNum(d.valorTotal),
+            fotosAntes: safeArr(d.fotosAntes),
+            fotosDepois: safeArr(d.fotosDepois),
+          });
+        }
+      } catch (e: any) {
+        console.error(e);
+        setErr("Erro ao carregar: " + (e?.message || String(e)));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [id]);
 
-  if (carregando) {
+  const fotosAntes = useMemo(() => safeArr(data?.fotosAntes), [data]);
+  const fotosDepois = useMemo(() => safeArr(data?.fotosDepois), [data]);
+
+  if (loading) {
     return (
-      <main className="min-h-screen bg-black text-white p-6">
-        <p className="text-zinc-400">Carregando PDF...</p>
+      <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <p className="text-zinc-300">Carregando comprovante...</p>
       </main>
     );
   }
 
   if (!data) {
     return (
-      <main className="min-h-screen bg-black text-white p-6">
-        <p className="text-red-400">Link inválido ou expirado.</p>
+      <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <div className="max-w-xl w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+          <p className="text-red-400 font-bold">Erro</p>
+          <p className="text-zinc-300 mt-2 break-words">{err || "Não foi possível abrir."}</p>
+        </div>
       </main>
     );
   }
 
-  const fotosAntes = data.fotosAntes || [];
-  const fotosDepois = data.fotosDepois || [];
-
   return (
-    <main className="min-h-screen bg-black text-white p-6">
-      {/* MENU (não imprime) */}
-      <div className="print:hidden flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => window.print()}
-          className="bg-yellow-500 text-black px-4 py-2 rounded font-bold"
-        >
-          Imprimir / Salvar PDF
-        </button>
-      </div>
+    <main className="min-h-screen bg-black text-white p-4 sm:p-8">
+      {/* área “imprimível” */}
+      <div id="printArea" className="max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div>
+            <p className="text-2xl font-extrabold">{data.lojaNome || "KING OF CELL"}</p>
+            <p className="text-zinc-400 text-sm">Comprovante / Ordem de Serviço</p>
+          </div>
 
-      {/* CONTEÚDO */}
-      <div className="border border-zinc-800 rounded p-4">
-        <h1 className="text-2xl font-bold mb-2">KING OF CELL</h1>
+          <button
+            onClick={() => window.print()}
+            className="bg-white text-black px-4 py-2 rounded-xl font-extrabold"
+          >
+            Baixar / Imprimir PDF
+          </button>
+        </div>
 
-        <div className="space-y-1">
+        <div className="border-t border-zinc-800 pt-4 space-y-2">
           <p><b>Cliente:</b> {data.cliente || "-"}</p>
-          <p><b>Marca:</b> {data.marca || "-"}</p>
-          <p><b>Modelo:</b> {data.modelo || "-"}</p>
-          <p><b>Status:</b> {data.status || "-"}</p>
+          <p><b>Aparelho:</b> {(data.marca || "-") + " • " + (data.modelo || "-")}</p>
 
           <p>
-            <b>Valor final:</b>{" "}
-            <span className="text-green-400 font-bold">
+            <b>Valor Final:</b>{" "}
+            <span className="text-green-400 font-extrabold">
               {typeof data.valorTotal === "number" ? formatBRL(data.valorTotal) : "-"}
             </span>
           </p>
         </div>
 
-        <div className="mt-6">
-          <p className="font-bold mb-2">Reparos</p>
+        <div className="mt-5">
+          <p className="font-bold mb-2">Serviços</p>
           <ul className="list-disc pl-6 text-zinc-200">
-            {(data.reparos || []).map((r, i) => <li key={i}>{r}</li>)}
-            {(data.reparos || []).length === 0 && <li>-</li>}
+            {safeArr(data.reparos).length ? safeArr(data.reparos).map((r: string, i: number) => <li key={i}>{r}</li>) : <li>-</li>}
           </ul>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5">
           <p className="font-bold mb-2">Estado do aparelho</p>
           <ul className="list-disc pl-6 text-zinc-200">
-            {(data.estado || []).map((e, i) => <li key={i}>{e}</li>)}
-            {(data.estado || []).length === 0 && <li>-</li>}
+            {safeArr(data.estado).length ? safeArr(data.estado).map((e: string, i: number) => <li key={i}>{e}</li>) : <li>-</li>}
           </ul>
         </div>
 
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Antes)</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {fotosAntes.map((src, i) => (
-              <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded border border-zinc-700" />
-            ))}
-            {fotosAntes.length === 0 && <p className="text-zinc-400">-</p>}
+            {fotosAntes.length ? fotosAntes.map((src: string, i: number) => (
+              <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded-xl border border-zinc-800" />
+            )) : <p className="text-zinc-400">Nenhuma foto.</p>}
           </div>
         </div>
 
         <div className="mt-6">
           <p className="font-bold mb-2">Fotos (Depois)</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {fotosDepois.map((src, i) => (
-              <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded border border-zinc-700" />
-            ))}
-            {fotosDepois.length === 0 && <p className="text-zinc-400">-</p>}
+            {fotosDepois.length ? fotosDepois.map((src: string, i: number) => (
+              <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded-xl border border-zinc-800" />
+            )) : <p className="text-zinc-400">Nenhuma foto.</p>}
           </div>
         </div>
       </div>
 
-      {/* CSS de impressão: fundo preto */}
+      {/* css de impressão */}
       <style jsx global>{`
         @media print {
-          html, body {
+          body { background: #000 !important; }
+          button { display: none !important; }
+          #printArea {
+            border: none !important;
             background: #000 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+            color: #fff !important;
             margin: 0 !important;
+            width: 100% !important;
           }
+          img { max-width: 100% !important; }
         }
       `}</style>
     </main>
