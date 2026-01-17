@@ -1,4 +1,4 @@
-""use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
@@ -56,7 +56,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// ✅ bem menor para não estourar 1MB no Firestore
 async function compressImage(file: File, maxW = 720, quality = 0.55): Promise<string> {
   const base64 = await fileToBase64(file);
   const img = document.createElement("img");
@@ -91,7 +90,6 @@ export default function OrdemDetalhePage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string>("");
 
-  // buffers locais (agora COM compressão)
   const [antesLocal, setAntesLocal] = useState<string[]>([]);
   const [depoisLocal, setDepoisLocal] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -159,7 +157,6 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  /* ================== ADD FOTOS COM COMPRESSÃO ================== */
   async function addLocalAntes(files: FileList | null) {
     try {
       if (!files) return;
@@ -168,9 +165,7 @@ export default function OrdemDetalhePage() {
 
       const toTake = Array.from(files).slice(0, livres);
       const novas: string[] = [];
-      for (const f of toTake) {
-        novas.push(await compressImage(f, 720, 0.55));
-      }
+      for (const f of toTake) novas.push(await compressImage(f, 720, 0.55));
       setAntesLocal((p) => [...p, ...novas]);
     } catch (e: any) {
       console.error(e);
@@ -178,7 +173,6 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  // ✅ Depois: limite 2 para ficar 100% estável
   async function addLocalDepois(files: FileList | null) {
     try {
       if (!files) return;
@@ -187,9 +181,7 @@ export default function OrdemDetalhePage() {
 
       const toTake = Array.from(files).slice(0, livres);
       const novas: string[] = [];
-      for (const f of toTake) {
-        novas.push(await compressImage(f, 720, 0.55));
-      }
+      for (const f of toTake) novas.push(await compressImage(f, 720, 0.55));
       setDepoisLocal((p) => [...p, ...novas]);
     } catch (e: any) {
       console.error(e);
@@ -204,7 +196,7 @@ export default function OrdemDetalhePage() {
     try {
       await updateDoc(doc(db, "ordens", id), {
         fotosAntes: [...fotosAntes, ...antesLocal].slice(0, 3),
-        fotosDepois: [...fotosDepois, ...depoisLocal].slice(0, 2), // ✅ 2
+        fotosDepois: [...fotosDepois, ...depoisLocal].slice(0, 2),
       });
       setAntesLocal([]);
       setDepoisLocal([]);
@@ -218,11 +210,16 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  /* ================== ENVIAR WHATS PARA TELEFONE DA OS ================== */
+  // ✅ FIX POPUP BLOCK: abre janela ANTES do await
   async function enviarWhats() {
     if (!ordem) return;
+
     setSending(true);
     setMsg("");
+
+    // abre uma aba/janela agora (gesto do clique), para não bloquear
+    const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
+
     try {
       const ref = await addDoc(collection(db, "shares"), {
         lojaNome: "KING OF CELL",
@@ -233,8 +230,8 @@ export default function OrdemDetalhePage() {
         reparos: ordem.reparos || [],
         estado: ordem.estado || [],
         valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
-        fotosAntes: fotosAntes,
-        fotosDepois: fotosDepois,
+        fotosAntes,
+        fotosDepois,
         criadoEm: serverTimestamp(),
         osId: id,
       });
@@ -248,10 +245,19 @@ export default function OrdemDetalhePage() {
         ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
         : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
-      window.open(waUrl, "_blank", "noopener,noreferrer");
+      // redireciona a janela que já foi aberta
+      if (popup) popup.location.href = waUrl;
+      else window.location.href = waUrl; // fallback
     } catch (e: any) {
       console.error("ERRO enviarWhats:", e);
-      setMsg("Erro ao gerar link/Whats: " + (e?.message || String(e)));
+
+      if (popup) popup.close(); // fecha se deu erro
+
+      setMsg(
+        "Erro ao gerar link/Whats: " +
+          (e?.code ? `${e.code} - ` : "") +
+          (e?.message || String(e))
+      );
     } finally {
       setSending(false);
     }
@@ -259,7 +265,6 @@ export default function OrdemDetalhePage() {
 
   return (
     <main className="min-h-screen bg-black text-white p-5">
-      {/* topo simples */}
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => router.back()}
@@ -267,7 +272,6 @@ export default function OrdemDetalhePage() {
         >
           Voltar
         </button>
-
         <span className="text-zinc-400 text-sm">{osCurta(id)}</span>
       </div>
 
@@ -298,9 +302,7 @@ export default function OrdemDetalhePage() {
       {!loading && ordem && (
         <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
           <p className="text-xl font-extrabold">{ordem.cliente || "-"}</p>
-          <p className="text-zinc-400">
-            {(ordem.marca || "-") + " • " + (ordem.modelo || "-")}
-          </p>
+          <p className="text-zinc-400">{(ordem.marca || "-") + " • " + (ordem.modelo || "-")}</p>
 
           <p className="mt-3">
             <b>Status:</b> {status}
@@ -315,26 +317,17 @@ export default function OrdemDetalhePage() {
 
           <div className="mt-4 flex gap-2 flex-wrap">
             {status === "Em análise" && (
-              <button
-                onClick={() => setStatus("Em reparo")}
-                className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold"
-              >
+              <button onClick={() => setStatus("Em reparo")} className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold">
                 Iniciar reparo
               </button>
             )}
             {emReparo && (
-              <button
-                onClick={() => setStatus("Concluído")}
-                className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold"
-              >
+              <button onClick={() => setStatus("Concluído")} className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold">
                 Concluir
               </button>
             )}
             {!concluida && (
-              <button
-                onClick={() => setStatus("Cancelado")}
-                className="bg-yellow-500 text-black px-4 py-2 rounded-xl font-bold"
-              >
+              <button onClick={() => setStatus("Cancelado")} className="bg-yellow-500 text-black px-4 py-2 rounded-xl font-bold">
                 Cancelar
               </button>
             )}
@@ -360,13 +353,7 @@ export default function OrdemDetalhePage() {
           <p className="font-bold mb-2">Fotos (Antes) — até 3</p>
           <label className="inline-block bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
             Selecionar
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => addLocalAntes(e.target.files)}
-            />
+            <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addLocalAntes(e.target.files)} />
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -383,13 +370,7 @@ export default function OrdemDetalhePage() {
               <p className="font-bold mt-6 mb-2">Fotos (Depois) — até 2</p>
               <label className="inline-block bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
                 Selecionar
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => addLocalDepois(e.target.files)}
-                />
+                <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addLocalDepois(e.target.files)} />
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
