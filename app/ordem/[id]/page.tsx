@@ -1,4 +1,4 @@
-"use client";
+""use client";
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
@@ -40,6 +40,48 @@ function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
 
+function normalizarTelefoneBR(telefone?: string) {
+  const t = (telefone || "").replace(/\D/g, "");
+  if (!t) return "";
+  return t.startsWith("55") ? t : `55${t}`;
+}
+
+/* ================== IMAGEM (compressão) ================== */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ✅ bem menor para não estourar 1MB no Firestore
+async function compressImage(file: File, maxW = 720, quality = 0.55): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const img = document.createElement("img");
+  img.src = base64;
+
+  await new Promise<void>((res, rej) => {
+    img.onload = () => res();
+    img.onerror = () => rej(new Error("Imagem inválida"));
+  });
+
+  const scale = Math.min(1, maxW / img.width);
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 export default function OrdemDetalhePage() {
   const router = useRouter();
   const params = useParams();
@@ -49,7 +91,7 @@ export default function OrdemDetalhePage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string>("");
 
-  // buffers simples (sem compressão agora — pra evitar qualquer bug)
+  // buffers locais (agora COM compressão)
   const [antesLocal, setAntesLocal] = useState<string[]>([]);
   const [depoisLocal, setDepoisLocal] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -67,7 +109,6 @@ export default function OrdemDetalhePage() {
         setMsg("OS não encontrada (documento não existe).");
       } else {
         const d: any = snap.data();
-        // sanitiza pra não quebrar render
         const o: Ordem = {
           cliente: safeStr(d.cliente),
           telefone: safeStr(d.telefone),
@@ -85,10 +126,7 @@ export default function OrdemDetalhePage() {
     } catch (e: any) {
       console.error("ERRO /ordem/[id] getDoc:", e);
       setOrdem(null);
-      setMsg(
-        "Erro ao abrir esta OS. Mensagem: " +
-          (e?.message || String(e) || "desconhecido")
-      );
+      setMsg("Erro ao abrir esta OS: " + (e?.message || String(e) || "desconhecido"));
     } finally {
       setLoading(false);
     }
@@ -121,37 +159,40 @@ export default function OrdemDetalhePage() {
     }
   }
 
-  function addLocalAntes(files: FileList | null) {
+  /* ================== ADD FOTOS COM COMPRESSÃO ================== */
+  async function addLocalAntes(files: FileList | null) {
     try {
       if (!files) return;
       const livres = Math.max(0, 3 - fotosAntes.length - antesLocal.length);
       if (livres <= 0) return setMsg("Limite de 3 fotos (Antes).");
-      const toTake = Array.from(files).slice(0, livres);
 
-      // sem compressão: apenas preview base64
-      toTake.forEach((f) => {
-        const r = new FileReader();
-        r.onload = () => setAntesLocal((p) => [...p, String(r.result)]);
-        r.readAsDataURL(f);
-      });
+      const toTake = Array.from(files).slice(0, livres);
+      const novas: string[] = [];
+      for (const f of toTake) {
+        novas.push(await compressImage(f, 720, 0.55));
+      }
+      setAntesLocal((p) => [...p, ...novas]);
     } catch (e: any) {
+      console.error(e);
       setMsg("Erro ao selecionar fotos (Antes): " + (e?.message || String(e)));
     }
   }
 
-  function addLocalDepois(files: FileList | null) {
+  // ✅ Depois: limite 2 para ficar 100% estável
+  async function addLocalDepois(files: FileList | null) {
     try {
       if (!files) return;
-      const livres = Math.max(0, 3 - fotosDepois.length - depoisLocal.length);
-      if (livres <= 0) return setMsg("Limite de 3 fotos (Depois).");
-      const toTake = Array.from(files).slice(0, livres);
+      const livres = Math.max(0, 2 - fotosDepois.length - depoisLocal.length);
+      if (livres <= 0) return setMsg("Limite de 2 fotos (Depois).");
 
-      toTake.forEach((f) => {
-        const r = new FileReader();
-        r.onload = () => setDepoisLocal((p) => [...p, String(r.result)]);
-        r.readAsDataURL(f);
-      });
+      const toTake = Array.from(files).slice(0, livres);
+      const novas: string[] = [];
+      for (const f of toTake) {
+        novas.push(await compressImage(f, 720, 0.55));
+      }
+      setDepoisLocal((p) => [...p, ...novas]);
     } catch (e: any) {
+      console.error(e);
       setMsg("Erro ao selecionar fotos (Depois): " + (e?.message || String(e)));
     }
   }
@@ -163,7 +204,7 @@ export default function OrdemDetalhePage() {
     try {
       await updateDoc(doc(db, "ordens", id), {
         fotosAntes: [...fotosAntes, ...antesLocal].slice(0, 3),
-        fotosDepois: [...fotosDepois, ...depoisLocal].slice(0, 3),
+        fotosDepois: [...fotosDepois, ...depoisLocal].slice(0, 2), // ✅ 2
       });
       setAntesLocal([]);
       setDepoisLocal([]);
@@ -177,12 +218,14 @@ export default function OrdemDetalhePage() {
     }
   }
 
+  /* ================== ENVIAR WHATS PARA TELEFONE DA OS ================== */
   async function enviarWhats() {
     if (!ordem) return;
     setSending(true);
     setMsg("");
     try {
       const ref = await addDoc(collection(db, "shares"), {
+        lojaNome: "KING OF CELL",
         cliente: ordem.cliente || "",
         telefone: ordem.telefone || "",
         marca: ordem.marca || "",
@@ -193,11 +236,19 @@ export default function OrdemDetalhePage() {
         fotosAntes: fotosAntes,
         fotosDepois: fotosDepois,
         criadoEm: serverTimestamp(),
+        osId: id,
       });
 
       const link = `${window.location.origin}/s/${ref.id}`;
-      const texto = `Olá ${ordem.cliente || ""}! Segue sua OS:\n\n${link}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+      const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
+      const texto = `Olá${nome}! Segue o PDF da sua OS ${osCurta(id)}:\n\n${link}`;
+
+      const tel = normalizarTelefoneBR(ordem.telefone);
+      const waUrl = tel
+        ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
+        : `https://wa.me/?text=${encodeURIComponent(texto)}`;
+
+      window.open(waUrl, "_blank", "noopener,noreferrer");
     } catch (e: any) {
       console.error("ERRO enviarWhats:", e);
       setMsg("Erro ao gerar link/Whats: " + (e?.message || String(e)));
@@ -234,16 +285,10 @@ export default function OrdemDetalhePage() {
           <p className="text-red-400 font-bold mb-2">Não foi possível abrir a OS</p>
           <p className="text-zinc-300 text-sm">Use “Tentar de novo”.</p>
           <div className="mt-4 flex gap-2 flex-wrap">
-            <button
-              onClick={carregar}
-              className="bg-zinc-800 px-4 py-2 rounded-xl font-bold"
-            >
+            <button onClick={carregar} className="bg-zinc-800 px-4 py-2 rounded-xl font-bold">
               Tentar de novo
             </button>
-            <Link
-              href="/dashboard"
-              className="bg-white text-black px-4 py-2 rounded-xl font-bold"
-            >
+            <Link href="/dashboard" className="bg-white text-black px-4 py-2 rounded-xl font-bold">
               Voltar para Ativas
             </Link>
           </div>
@@ -270,20 +315,30 @@ export default function OrdemDetalhePage() {
 
           <div className="mt-4 flex gap-2 flex-wrap">
             {status === "Em análise" && (
-              <button onClick={() => setStatus("Em reparo")} className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold">
+              <button
+                onClick={() => setStatus("Em reparo")}
+                className="bg-blue-500 text-black px-4 py-2 rounded-xl font-bold"
+              >
                 Iniciar reparo
               </button>
             )}
             {emReparo && (
-              <button onClick={() => setStatus("Concluído")} className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold">
+              <button
+                onClick={() => setStatus("Concluído")}
+                className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold"
+              >
                 Concluir
               </button>
             )}
             {!concluida && (
-              <button onClick={() => setStatus("Cancelado")} className="bg-yellow-500 text-black px-4 py-2 rounded-xl font-bold">
+              <button
+                onClick={() => setStatus("Cancelado")}
+                className="bg-yellow-500 text-black px-4 py-2 rounded-xl font-bold"
+              >
                 Cancelar
               </button>
             )}
+
             {concluida && (
               <>
                 <button
@@ -291,7 +346,7 @@ export default function OrdemDetalhePage() {
                   disabled={sending}
                   className="bg-green-600 text-black px-4 py-2 rounded-xl font-bold disabled:opacity-50"
                 >
-                  {sending ? "Gerando..." : "Enviar Whats"}
+                  {sending ? "Gerando..." : "Enviar Whats (PDF)"}
                 </button>
                 <Link href={`/pdf/${id}`} className="bg-white text-black px-4 py-2 rounded-xl font-bold">
                   PDF
@@ -302,10 +357,16 @@ export default function OrdemDetalhePage() {
 
           <hr className="border-zinc-800 my-5" />
 
-          <p className="font-bold mb-2">Fotos (Antes)</p>
+          <p className="font-bold mb-2">Fotos (Antes) — até 3</p>
           <label className="inline-block bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
             Selecionar
-            <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addLocalAntes(e.target.files)} />
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => addLocalAntes(e.target.files)}
+            />
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
@@ -319,13 +380,19 @@ export default function OrdemDetalhePage() {
 
           {concluida && (
             <>
-              <p className="font-bold mt-6 mb-2">Fotos (Depois)</p>
+              <p className="font-bold mt-6 mb-2">Fotos (Depois) — até 2</p>
               <label className="inline-block bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold cursor-pointer">
                 Selecionar
-                <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => addLocalDepois(e.target.files)} />
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => addLocalDepois(e.target.files)}
+                />
               </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                 {fotosDepois.map((src: string, i: number) => (
                   <img key={i} src={src} className="rounded-xl border border-zinc-800" />
                 ))}
