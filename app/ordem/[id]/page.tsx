@@ -202,52 +202,46 @@ export default function OrdemDetalhePage() {
   }
 
   // ✅ WHATS melhorado: link em linha separada + abre sem popup + manda pro telefone da OS
-  async function enviarWhats() {
-    if (!ordem) return;
-    setSending(true);
-    setMsg("");
+ async function enviarWhats() {
+  if (!ordem) return;
+  setSending(true);
+  setMsg("");
 
-    try {
-      const shareRef = await addDoc(collection(db, "shares"), {
-        lojaNome: "KING OF CELL",
-        cliente: ordem.cliente || "",
-        telefone: ordem.telefone || "",
-        marca: ordem.marca || "",
-        modelo: ordem.modelo || "",
-        reparos: ordem.reparos || [],
-        estado: ordem.estado || [],
-        valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
-        fotosAntes,
-        fotosDepois,
-        criadoEm: serverTimestamp(),
-        osId: id,
-        origem: "ordem",
-      });
+  try {
+    const shareRef = await addDoc(collection(db, "shares"), {
+      lojaNome: "KING OF CELL",
+      cliente: ordem.cliente || "",
+      telefone: ordem.telefone || "",
+      marca: ordem.marca || "",
+      modelo: ordem.modelo || "",
+      reparos: ordem.reparos || [],
+      estado: ordem.estado || [],
+      valorTotal: typeof ordem.valorTotal === "number" ? ordem.valorTotal : null,
+      fotosAntes,
+      fotosDepois,
+      criadoEm: serverTimestamp(),
+      osId: id,
+      origem: "ordem",
+    });
 
-      const link = `${window.location.origin}/s/${shareRef.id}`;
-      const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
+    const link = `${window.location.origin}/s/${shareRef.id}`;
 
-      // 🔥 link sozinho numa linha (Whats não corta)
-      const texto =
-        `Olá${nome}!\n` +
-        `Segue o comprovante/OS ${osCurta(id)}:\n\n` +
-        `${link}\n\n` +
-        `Se não abrir, copie e cole no navegador.`;
+    // ✅ manda SOMENTE o link (Whats não corta)
+    const texto = link;
 
-      const tel = normalizarTelefoneBR(ordem.telefone);
-      const waUrl = tel
-        ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
-        : `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    const tel = normalizarTelefoneBR(ordem.telefone);
+    const waUrl = tel
+      ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
+      : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 
-      // ✅ abre sem bloqueio de popup
-      window.location.href = waUrl;
-    } catch (e: any) {
-      console.error("ERRO enviarWhats:", e);
-      setMsg(`Erro ao gerar link público: ${e?.code || ""} ${e?.message || String(e)}`);
-    } finally {
-      setSending(false);
-    }
+    window.location.href = waUrl;
+  } catch (e: any) {
+    console.error("ERRO enviarWhats:", e);
+    setMsg(`Erro ao gerar link público: ${e?.code || ""} ${e?.message || String(e)}`);
+  } finally {
+    setSending(false);
   }
+}
 
   return (
     <main className="min-h-screen bg-black text-white p-5">
