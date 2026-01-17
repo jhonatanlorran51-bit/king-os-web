@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../../lib/firebase";
 
 type Ordem = {
   id: string;
@@ -24,15 +26,12 @@ function osCurta(id: string) {
   const tail = (id || "").slice(-6).toUpperCase();
   return tail ? `OS #${tail}` : "OS";
 }
-
 function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
-
 function normalizarTelefoneBR(telefone?: string) {
   const t = (telefone || "").replace(/\D/g, "");
   if (!t) return "";
-  // se já vier com 55, mantém; se não, adiciona 55
   return t.startsWith("55") ? t : `55${t}`;
 }
 
@@ -40,8 +39,15 @@ export default function ConcluidasPage() {
   const router = useRouter();
   const [ordens, setOrdens] = useState<Ordem[]>([]);
   const [carregando, setCarregando] = useState(true);
-
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
+
+  // ✅ garante que está logado
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) router.replace("/login");
+    });
+    return () => unsub();
+  }, [router]);
 
   async function carregar() {
     setCarregando(true);
@@ -60,8 +66,13 @@ export default function ConcluidasPage() {
 
   async function enviarPdfWhatsApp(ordem: Ordem) {
     setEnviandoId(ordem.id);
+
     try {
-      // cria copia publica (o cliente abre sem login)
+      if (!auth.currentUser) {
+        alert("Você não está logado. Faça login e tente de novo.");
+        return;
+      }
+
       const ref = await addDoc(collection(db, "shares"), {
         lojaNome: "KING OF CELL",
         cliente: ordem.cliente || "",
@@ -80,7 +91,6 @@ export default function ConcluidasPage() {
       });
 
       const linkPublico = `${window.location.origin}/s/${ref.id}`;
-
       const nome = ordem.cliente ? ` ${ordem.cliente}` : "";
       const msg = `Olá${nome}! Segue o PDF do seu serviço ${osCurta(ordem.id)}:\n\n${linkPublico}`;
 
@@ -90,9 +100,14 @@ export default function ConcluidasPage() {
         : `https://wa.me/?text=${encodeURIComponent(msg)}`;
 
       window.open(waUrl, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao gerar link público do cliente. Verifique as Rules da coleção 'shares'.");
+    } catch (e: any) {
+      console.error("ERRO shares:", e);
+      alert(
+        `Erro ao gerar link público.\n\n` +
+          `Código: ${e?.code || "-"}\n` +
+          `Mensagem: ${e?.message || "-"}\n\n` +
+          `Se o código for "permission-denied", é Rules.`
+      );
     } finally {
       setEnviandoId(null);
     }
@@ -100,16 +115,11 @@ export default function ConcluidasPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* TOPO LIMPO: só Voltar */}
       <header className="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-zinc-800">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => router.back()}
-            className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold"
-          >
+          <button onClick={() => router.back()} className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold">
             Voltar
           </button>
-
           <span className="text-zinc-400 text-sm">Concluídas</span>
         </div>
       </header>
@@ -119,41 +129,29 @@ export default function ConcluidasPage() {
 
         {carregando && <p className="text-zinc-400">Carregando...</p>}
 
-        {!carregando && ordens.length === 0 && (
-          <p className="text-zinc-400">Nenhuma ordem concluída.</p>
-        )}
+        {!carregando && ordens.length === 0 && <p className="text-zinc-400">Nenhuma ordem concluída.</p>}
 
         <div className="space-y-3">
           {ordens.map((o) => (
             <div key={o.id} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <p className="font-extrabold">
-                    {o.marca ? `${o.marca} • ` : ""}{o.modelo || "-"}
-                  </p>
+                  <p className="font-extrabold">{o.marca ? `${o.marca} • ` : ""}{o.modelo || "-"}</p>
                   <p className="text-zinc-400 text-sm">
                     <b>{osCurta(o.id)}</b> • Cliente: {o.cliente || "-"} • Tel: {o.telefone || "-"}
                   </p>
                   <p className="text-zinc-300 text-sm mt-1">
                     Valor:{" "}
-                    <b className="text-green-400">
-                      {typeof o.valorTotal === "number" ? formatBRL(o.valorTotal) : "-"}
-                    </b>
+                    <b className="text-green-400">{typeof o.valorTotal === "number" ? formatBRL(o.valorTotal) : "-"}</b>
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/ordem/${o.id}`}
-                    className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold"
-                  >
+                  <Link href={`/ordem/${o.id}`} className="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-xl font-bold">
                     Abrir
                   </Link>
 
-                  <Link
-                    href={`/pdf/${o.id}`}
-                    className="bg-white hover:bg-zinc-200 text-black px-4 py-2 rounded-xl font-extrabold"
-                  >
+                  <Link href={`/pdf/${o.id}`} className="bg-white hover:bg-zinc-200 text-black px-4 py-2 rounded-xl font-extrabold">
                     PDF (interno)
                   </Link>
 
