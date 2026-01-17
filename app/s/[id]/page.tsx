@@ -1,13 +1,14 @@
 "use client";
 
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-type ShareOS = {
+type Share = {
   lojaNome?: string;
   cliente?: string;
+  telefone?: string;
   marca?: string;
   modelo?: string;
   reparos?: string[];
@@ -15,13 +16,14 @@ type ShareOS = {
   valorTotal?: number | null;
   fotosAntes?: string[];
   fotosDepois?: string[];
+  osId?: string;
 };
 
 function safeStr(v: any) {
   return typeof v === "string" ? v : "";
 }
 function safeArr(v: any) {
-  return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  return Array.isArray(v) ? v : [];
 }
 function safeNum(v: any) {
   return typeof v === "number" && isFinite(v) ? v : null;
@@ -30,48 +32,60 @@ function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
 
-export default function ShareOSPage() {
+export default function SharePublicPage() {
   const params = useParams();
-  const id = String((params as any)?.id || "");
+  const search = useSearchParams();
 
+  // ✅ pega ID tanto por /s/[id] quanto por /s?id=...
+  const idFromParams =
+    (params as any)?.id ||
+    (params as any)?.shareId ||
+    (params as any)?.slug ||
+    "";
+  const idFromQuery = search?.get("id") || "";
+
+  const id = String(idFromParams || idFromQuery || "").trim();
+
+  const [share, setShare] = useState<Share | null>(null);
   const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
-  const [data, setData] = useState<ShareOS | null>(null);
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
     async function run() {
       setLoading(true);
-      setErro("");
-      setData(null);
+      setMsg("");
+      setShare(null);
+
+      if (!id) {
+        setLoading(false);
+        setMsg(`Link inválido (sem ID).\n\nID: ${id || "-"}`);
+        return;
+      }
 
       try {
-        if (!id) {
-          setErro("Link inválido (sem ID).");
-          return;
-        }
-
         const snap = await getDoc(doc(db, "shares", id));
         if (!snap.exists()) {
-          setErro("Comprovante não encontrado (ID inválido ou expirado).");
-          return;
+          setMsg("Link inválido (documento não existe).");
+          setShare(null);
+        } else {
+          const d: any = snap.data();
+          setShare({
+            lojaNome: safeStr(d.lojaNome),
+            cliente: safeStr(d.cliente),
+            telefone: safeStr(d.telefone),
+            marca: safeStr(d.marca),
+            modelo: safeStr(d.modelo),
+            reparos: safeArr(d.reparos),
+            estado: safeArr(d.estado),
+            valorTotal: safeNum(d.valorTotal),
+            fotosAntes: safeArr(d.fotosAntes),
+            fotosDepois: safeArr(d.fotosDepois),
+            osId: safeStr(d.osId),
+          });
         }
-
-        const d: any = snap.data();
-        const obj: ShareOS = {
-          lojaNome: safeStr(d.lojaNome) || "KING OF CELL",
-          cliente: safeStr(d.cliente),
-          marca: safeStr(d.marca),
-          modelo: safeStr(d.modelo),
-          reparos: safeArr(d.reparos),
-          estado: safeArr(d.estado),
-          valorTotal: safeNum(d.valorTotal),
-          fotosAntes: safeArr(d.fotosAntes),
-          fotosDepois: safeArr(d.fotosDepois),
-        };
-        setData(obj);
       } catch (e: any) {
         console.error("ERRO /s/[id]:", e);
-        setErro(e?.message || "Erro ao abrir o comprovante.");
+        setMsg("Erro ao abrir o link: " + (e?.message || String(e)));
       } finally {
         setLoading(false);
       }
@@ -80,101 +94,108 @@ export default function ShareOSPage() {
     run();
   }, [id]);
 
-  const lojaNome = useMemo(() => safeStr(data?.lojaNome) || "KING OF CELL", [data]);
-  const cliente = useMemo(() => safeStr(data?.cliente) || "-", [data]);
-  const marca = useMemo(() => safeStr(data?.marca) || "-", [data]);
-  const modelo = useMemo(() => safeStr(data?.modelo) || "-", [data]);
-  const valorTotal = useMemo(() => safeNum(data?.valorTotal), [data]);
-  const reparos = useMemo(() => safeArr(data?.reparos), [data]);
-  const estado = useMemo(() => safeArr(data?.estado), [data]);
-  const fotosAntes = useMemo(() => safeArr(data?.fotosAntes), [data]);
-  const fotosDepois = useMemo(() => safeArr(data?.fotosDepois), [data]);
+  const fotosAntes = useMemo(() => safeArr(share?.fotosAntes), [share]);
+  const fotosDepois = useMemo(() => safeArr(share?.fotosDepois), [share]);
 
   return (
-    <main className="min-h-screen bg-black text-white p-4 sm:p-8">
-      <div className="max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div>
-            <p className="text-2xl font-extrabold">{lojaNome}</p>
-            <p className="text-zinc-400 text-sm">Comprovante / Ordem de Serviço</p>
-          </div>
+    <main className="min-h-screen bg-black text-white p-6">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-2xl font-extrabold">
+          {share?.lojaNome || "KING OF CELL"}
+        </h1>
+        <p className="text-zinc-400 text-sm mt-1">
+          Comprovante / Orçamento
+        </p>
 
-          <button
-            onClick={() => window.print()}
-            className="bg-white text-black px-4 py-2 rounded-xl font-extrabold"
-          >
-            Imprimir / Salvar PDF
-          </button>
-        </div>
+        {loading && <p className="text-zinc-400 mt-6">Carregando...</p>}
 
-        {loading && <p className="text-zinc-400">Carregando...</p>}
-
-        {!loading && erro && (
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
-            <p className="text-red-400 font-bold">Não foi possível abrir</p>
-            <p className="text-zinc-300 mt-2 break-words">{erro}</p>
-            <p className="text-zinc-500 text-xs mt-4 break-words">ID: {id || "-"}</p>
+        {!loading && msg && (
+          <div className="mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
+            <p className="text-yellow-300 font-bold">Não foi possível abrir</p>
+            <pre className="text-zinc-300 text-sm whitespace-pre-wrap mt-2">
+              {msg}
+            </pre>
           </div>
         )}
 
-        {!loading && !erro && data && (
-          <>
-            <div className="border-t border-zinc-800 pt-4 space-y-2">
-              <p><b>Cliente:</b> {cliente}</p>
-              <p><b>Aparelho:</b> {marca} • {modelo}</p>
-              <p>
-                <b>Valor Final:</b>{" "}
-                <span className="text-green-400 font-extrabold">
-                  {typeof valorTotal === "number" ? formatBRL(valorTotal) : "-"}
-                </span>
-              </p>
+        {!loading && share && (
+          <div className="mt-6 bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+            <p className="text-xl font-extrabold">{share.cliente || "-"}</p>
+            <p className="text-zinc-400">
+              {(share.marca || "-") + " • " + (share.modelo || "-")}
+            </p>
+
+            <p className="mt-4">
+              <b>Valor final:</b>{" "}
+              <span className="text-green-400 font-extrabold">
+                {typeof share.valorTotal === "number"
+                  ? formatBRL(share.valorTotal)
+                  : "-"}
+              </span>
+            </p>
+
+            <hr className="border-zinc-800 my-5" />
+
+            <p className="font-bold mb-2">Serviços</p>
+            <ul className="list-disc pl-6 text-zinc-200">
+              {(share.reparos || []).map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+              {(share.reparos || []).length === 0 && <li>-</li>}
+            </ul>
+
+            <p className="font-bold mt-5 mb-2">Estado do aparelho</p>
+            <ul className="list-disc pl-6 text-zinc-200">
+              {(share.estado || []).map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+              {(share.estado || []).length === 0 && <li>-</li>}
+            </ul>
+
+            <p className="font-bold mt-6 mb-2">Fotos (Antes)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {fotosAntes.map((src: string, i: number) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Antes ${i + 1}`}
+                  className="rounded-xl border border-zinc-800"
+                />
+              ))}
+              {fotosAntes.length === 0 && (
+                <p className="text-zinc-400">Sem fotos.</p>
+              )}
             </div>
 
-            <div className="mt-5">
-              <p className="font-bold mb-2">Serviços</p>
-              <ul className="list-disc pl-6 text-zinc-200">
-                {reparos.length ? reparos.map((r, i) => <li key={i}>{r}</li>) : <li>-</li>}
-              </ul>
+            <p className="font-bold mt-6 mb-2">Fotos (Depois)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {fotosDepois.map((src: string, i: number) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Depois ${i + 1}`}
+                  className="rounded-xl border border-zinc-800"
+                />
+              ))}
+              {fotosDepois.length === 0 && (
+                <p className="text-zinc-400">Sem fotos.</p>
+              )}
             </div>
 
-            <div className="mt-5">
-              <p className="font-bold mb-2">Estado do aparelho</p>
-              <ul className="list-disc pl-6 text-zinc-200">
-                {estado.length ? estado.map((e, i) => <li key={i}>{e}</li>) : <li>-</li>}
-              </ul>
-            </div>
+            <button
+              className="mt-7 w-full bg-white text-black px-6 py-3 rounded-2xl font-extrabold"
+              onClick={() => window.print()}
+            >
+              Imprimir / Salvar PDF
+            </button>
 
-            <div className="mt-6">
-              <p className="font-bold mb-2">Fotos (Antes)</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {fotosAntes.length
-                  ? fotosAntes.map((src, i) => (
-                      <img key={i} src={src} alt={`Antes ${i + 1}`} className="rounded-xl border border-zinc-800" />
-                    ))
-                  : <p className="text-zinc-400">Nenhuma foto.</p>}
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <p className="font-bold mb-2">Fotos (Depois)</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {fotosDepois.length
-                  ? fotosDepois.map((src, i) => (
-                      <img key={i} src={src} alt={`Depois ${i + 1}`} className="rounded-xl border border-zinc-800" />
-                    ))
-                  : <p className="text-zinc-400">Nenhuma foto.</p>}
-              </div>
-            </div>
-          </>
+            <p className="text-zinc-500 text-xs mt-3">
+              Dica: no celular, use “Compartilhar / Imprimir” e selecione “Salvar
+              como PDF”.
+            </p>
+          </div>
         )}
       </div>
-
-      <style jsx global>{`
-        @media print {
-          body { background: #000 !important; }
-          button { display: none !important; }
-        }
-      `}</style>
     </main>
   );
 }
