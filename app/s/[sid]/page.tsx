@@ -1,6 +1,5 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -30,9 +29,8 @@ function formatBRL(v: number) {
   return `R$ ${v.toFixed(2)}`;
 }
 
-export default function SharePage() {
-  const params = useParams();
-  const id = String((params as any)?.id || "");
+export default function SharePage({ params }: { params: { id: string } }) {
+  const id = String(params?.id || "");
 
   const [data, setData] = useState<ShareOS | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +39,7 @@ export default function SharePage() {
   useEffect(() => {
     if (!id) {
       setLoading(false);
-      setErr("Link inválido.");
+      setErr("Link inválido (sem ID).");
       return;
     }
 
@@ -52,7 +50,7 @@ export default function SharePage() {
         const snap = await getDoc(doc(db, "shares", id));
         if (!snap.exists()) {
           setData(null);
-          setErr("Comprovante não encontrado (link inválido ou expirado).");
+          setErr("Comprovante não encontrado (link inválido ou foi apagado).");
         } else {
           const d: any = snap.data();
           setData({
@@ -91,8 +89,9 @@ export default function SharePage() {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center p-6">
         <div className="max-w-xl w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
-          <p className="text-red-400 font-bold">Erro</p>
-          <p className="text-zinc-300 mt-2 break-words">{err || "Não foi possível abrir."}</p>
+          <p className="text-red-400 font-bold">Não foi possível abrir</p>
+          <p className="text-zinc-300 mt-2 break-words">{err || "Erro desconhecido."}</p>
+          <p className="text-zinc-500 text-xs mt-4 break-words">ID: {id || "-"}</p>
         </div>
       </main>
     );
@@ -100,7 +99,6 @@ export default function SharePage() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 sm:p-8">
-      {/* área “imprimível” */}
       <div id="printArea" className="max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
         <div className="flex items-center justify-between gap-4 mb-4">
           <div>
@@ -131,14 +129,18 @@ export default function SharePage() {
         <div className="mt-5">
           <p className="font-bold mb-2">Serviços</p>
           <ul className="list-disc pl-6 text-zinc-200">
-            {safeArr(data.reparos).length ? safeArr(data.reparos).map((r: string, i: number) => <li key={i}>{r}</li>) : <li>-</li>}
+            {safeArr(data.reparos).length
+              ? safeArr(data.reparos).map((r: string, i: number) => <li key={i}>{r}</li>)
+              : <li>-</li>}
           </ul>
         </div>
 
         <div className="mt-5">
           <p className="font-bold mb-2">Estado do aparelho</p>
           <ul className="list-disc pl-6 text-zinc-200">
-            {safeArr(data.estado).length ? safeArr(data.estado).map((e: string, i: number) => <li key={i}>{e}</li>) : <li>-</li>}
+            {safeArr(data.estado).length
+              ? safeArr(data.estado).map((e: string, i: number) => <li key={i}>{e}</li>)
+              : <li>-</li>}
           </ul>
         </div>
 
@@ -161,7 +163,6 @@ export default function SharePage() {
         </div>
       </div>
 
-      {/* css de impressão */}
       <style jsx global>{`
         @media print {
           body { background: #000 !important; }
