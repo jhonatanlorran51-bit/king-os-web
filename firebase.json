@@ -1,0 +1,11 @@
+﻿{
+  "hosting": {
+    "site": "king-os-aff6b",
+    "public": ".next",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
